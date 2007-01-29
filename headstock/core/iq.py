@@ -13,7 +13,6 @@ class Iq(Stanza):
     def __init__(self, from_jid=None, to_jid=None, stanza_type=None, stanza_id=None):
         Stanza.__init__(self, u'iq', from_jid, to_jid, stanza_type, stanza_id)
 
-        
     #########################################################
     # Class members
     #########################################################

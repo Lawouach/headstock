@@ -81,51 +81,89 @@ class Client(object):
     def _send(self, data):
         if isinstance(data, unicode):
             data = data.encode('utf-8')
-            
+
+        print "####################"
+        print data
         if hasattr(self.sock, 'write'):
             self.sock.write(data)
         else:
             self.sock.sendall(data)
 
-    def _recv(self, size=8192):
-        data = []
+    def _recv(self, size=4096):
         if hasattr(self.sock, 'read'):
             r = self.sock.read
         else:
             r = self.sock.recv
 
-        return r(size)
+        data = []
+        try:
+            incoming = r(size)
+            data.append(incoming)
+        except:
+            pass
+        while select.select([self.sock], [], [], 0.1)[0]:
+            try:
+                incoming = r(size)
+            except:
+                incoming = None
+            if not incoming: break
+            data.append(incoming)
+        return ''.join(data)
 
-    def communicate(self, data, size=8192):
+    def communicate(self, data, size=4096):
         self._send(data)
         data = self._recv(size)
         return data
 
 if __name__ == '__main__':
-    #from bridge.parser.bridge_amara import Parser
-    #from bridge import Element as E
-    #E.parser = Parser
+    from bridge.parser.bridge_amara import Parser
+    from bridge import Element as E
+    E.parser = Parser
 
     import headstock
 
     class H(object):    
         def handle_connected(self, response):
-            print "there"
+            pass
         handle_connected.headstock = 'connected'
 
+        def handle_item_not_found(self, response):
+            print response
+        handle_connected.headstock = 'item-not-found'
+
+
     from headstock.lib.registry import Registry
-    h = H()
-    r = Registry.register_class(h)
+    #r = H()
+    r = Registry()
     
     from headstock.core.stream import Stream
     from headstock.core.message import Message
-    from headstock.extension.pubsub import Disco
+    from headstock.extension.discovery import Disco
+    from headstock.extension.pubsub import Service
+
     c = Client('localhost', 5222)
-    s = Stream(u'localhost', c)
+    s = Stream(u'localhost', c, u'headstock')
+    v = Service(s)
     d = Disco(s)
+
     s.set_registry(r)
     s.set_auth('test', 'test')
     jid = s.initiate()
-    d.ask_features(jid, u'pubsub.localhost')
+    d.set_jids(unicode(jid), u'pubsub.localhost')
+    #d.ask_features(u'pubsub.localhost')
+    #d.set_jids(unicode(jid), u'conference.localhost')
+    #d.ask_features(u'conference.localhost')
+    #d.ask_nodes()
+    #d.ask_identities(u'/muse')
+    #n.create(jid, u'pubsub.localhost', u'test')
+    v.set_jids(unicode(jid), u'pubsub.localhost')
+    v.create_node(u'muse')
+    e = v.subscribe(u'/muse')
+    t = E(u't')
+    v.publish(u'/muse', t)
+    #e = v.subscribe(u'/test')
+    #v.purge(u'/muse')
+    #v.delete(u'/test/1eMqAWd0IMLBJWf8TyNG885v427D5cNq40f6bzyb')
+    v.unsubscribe(u'/muse', e[0].pubsub.subscription[0].subid)
     #s.propagate(Message(body=u'hi there', from_jid=jid, to_jid=u'test2@localhost'))
     s.terminate()

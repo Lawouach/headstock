@@ -64,7 +64,7 @@ def compute_digest_response(challenge, username, password, **kwargs):
     nc -- count of number of requests made so far by the client (default to '00000001')
     """
     params = _challenge_to_dict(challenge)
-    
+
     algorithm = params.get("algorithm", 'md5-sess')
     if algorithm is None:
         raise ValueError, "Missing 'algorithm' token within challenge"

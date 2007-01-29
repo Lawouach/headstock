@@ -5,21 +5,33 @@ from inspect import getmembers, ismethod
 
 __all__ = ['Registry']
 
-class Registry(dict):
+class Registry:
     def __init__(self, inst=None):
-        dict.__init__(self)
+        pass
 
     def run(self, operation, *args, **kwargs):
-        if operation in self:
-            self[operation](*args, **kwargs)
+        handler_name = 'handle_%s' % operation
+        if hasattr(self, handler_name):
+            cb = getattr(self, handler_name)
+            cb(*args, **kwargs)
 
-    @classmethod
-    def register_class(cls, inst):
-        members = getmembers(inst)
-        registry = Registry()
-        for (name, member) in members:
-            if ismethod(member) and hasattr(member, 'headstock'):
-                registry[member.headstock] = member
+    def register(self, name, cb):
+        """
+        Registers a callable to be applied to a XMPP response
+        starting with the element 'name'.
 
-        return registry            
-        
+        Keyword arguments:
+        name -- local name of the XML element
+        cb -- Python callable
+        """
+        name = name.replace('-', '_')
+        setattr(self, 'handle_%s' % name, cb)
+
+    def register_connected(self, cb):
+        self.handle_connected = cb
+
+    def register_authenticated(self, cb):
+        self.handle_authenticated = cb
+
+    def register_bound_to_resource(self, cb):
+        self.handle_bound = cb

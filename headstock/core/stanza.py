@@ -11,7 +11,7 @@ from headstock.error import *
 
 from bridge import Element as E
 from bridge import Attribute as A
-from bridge.common import XMPP_CLIENT_NS
+from bridge.common import XMPP_CLIENT_NS, XMPP_PUBSUB_NS
 
 __all__ = ['Stanza']
 
@@ -35,6 +35,48 @@ class Stanza(object):
         stanza.update_prefix(None, None, XMPP_CLIENT_NS, False)
             
         return stanza
+
+    def from_bridge(self, element):
+        from_jid = element.get_attribute('from')
+        if from_jid:
+            self.from_jid = from_jid
+            
+        to_jid = element.get_attribute('to')
+        if to_jid:
+            self.to_jid = to_jid
+            
+        stanza_type = element.get_attribute('type')
+        if stanza_type:
+            self.stanza_type = stanza_type
+            
+        stanza_id = element.get_attribute('id')
+        if stanza_id:
+            self.stanza_id = stanza_id 
     
     def xml(self):
         return self.to_bridge().xml(omit_declaration=True)
+
+    @classmethod
+    def is_error(cls, element):
+        """
+        Returns true of a stanza is of type 'error'
+
+        Keyword argument:
+        element -- brigde.Element instance of the stanza
+        """
+        type = element.get_attribute('type')
+        if type and unicode(type) == u'error':
+            return True
+        return False
+    
+    @classmethod
+    def find_error_element(cls, error_handler, element):
+        """
+        Returns the first error element child of the provided
+        stanza element. Returns None if there was no error found.
+
+        Keyword argument:
+        error_handler -- headstock.error.Error instance
+        element -- bridge.Element instance of a stanza
+        """
+        return error_handler.lookup(element)
