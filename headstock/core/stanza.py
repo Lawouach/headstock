@@ -24,7 +24,10 @@ class Stanza(object):
         self.stanza_type = stanza_type
 
     def to_bridge(self, parent=None):
-        stanza = E(self.node_name, attributes={u'type': self.stanza_type}, parent=parent)
+        attributes = {}
+        if self.stanza_type:
+            attributes = {u'type': self.stanza_type}
+        stanza = E(self.node_name, attributes=attributes, parent=parent)
         if self.from_jid:
             A(u'from', value=unicode(self.from_jid), parent=stanza)
         if self.to_jid:
@@ -55,28 +58,3 @@ class Stanza(object):
     
     def xml(self):
         return self.to_bridge().xml(omit_declaration=True)
-
-    @classmethod
-    def is_error(cls, element):
-        """
-        Returns true of a stanza is of type 'error'
-
-        Keyword argument:
-        element -- brigde.Element instance of the stanza
-        """
-        type = element.get_attribute('type')
-        if type and unicode(type) == u'error':
-            return True
-        return False
-    
-    @classmethod
-    def find_error_element(cls, error_handler, element):
-        """
-        Returns the first error element child of the provided
-        stanza element. Returns None if there was no error found.
-
-        Keyword argument:
-        error_handler -- headstock.error.Error instance
-        element -- bridge.Element instance of a stanza
-        """
-        return error_handler.lookup(element)
