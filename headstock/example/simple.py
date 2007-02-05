@@ -19,13 +19,12 @@ if __name__ == '__main__':
     from headstock.core.stream import Stream
     
     c = AsyncClient('localhost', 5222)
-    s = Stream(u'localhost', c)
-
     parser, handler, output = create_parser()
     c.set_parser(parser)
     c.set_handler(handler)
     c.connect()
 
+    s = Stream(u'localhost', c)
     s.set_auth('test', 'test')
     s.set_resource_name(u'headstock')
     s.initialize_all()
