@@ -10,37 +10,38 @@ from bridge.common import XMPP_CLIENT_NS
 __all__ = ['Presence']
 
 class Presence(object):
-    def __init__(self, stream):
+    def __init__(self, stream, proxy_registry=None):
         self.stream = stream
         self._dispatchers = {}
-        self._register()
+        self.proxy_registry = proxy_registry
 
     ############################################
-    # Dispatchers registry
+    # Dispatchers proxying
     ############################################
-    def _register(self):
-        client = self.stream.get_client()
-        handler = client.get_handler()
-        handler.register_on_element('presence', namespace=XMPP_CLIENT_NS,
-                                    dispatcher=self._proxy_dispatcher)
+    def initialize_dispatchers(self):
+        if self.proxy_registry:
+            self.proxy_registry.register('presence', self._proxy_dispatcher,
+                                         namespace=XMPP_CLIENT_NS)
+
+    def cleanup_dispatchers(self):
+        if self.proxy_registry:
+            self.proxy_registry.cleanup('presence', namespace=XMPP_CLIENT_NS)
 
     def _proxy_dispatcher(self, e):
+        key = 'presence'
         presence_type = e.get_attribute(u'type')
-        if not presence_type:
-            self._dispatchers[None](self, e)
-        else:
-            presence_type = unicode(presence_type)
-            if presence_type in self._dispatchers:
-                self._dispatchers[presence_type](self, e)
+        if presence_type:
+            key = 'presence.%s' % presence_type
+        self.proxy_registry.dispatch(key, self, e)
     
     def register_online(self, handler):
-        self._dispatchers[None] = handler 
+        self.proxy_registry.add_dispatcher('presence', handler)
 
     def register_unavailable(self, handler):
-        self._dispatchers['unavailable'] = handler
+        self.proxy_registry.add_dispatcher('presence.unavailable', handler)
 
     def register_subscribe(self, handler):
-        self._dispatchers['subscribe'] = handler
+        self.proxy_registry.add_dispatcher('presence.subscribe', handler)
 
     ############################################
     # Class methods

@@ -13,40 +13,54 @@ from bridge.common import XMPP_CLIENT_NS, XMPP_STREAM_NS, XMPP_STREAM_PREFIX,\
      XMPP_SASL_NS, XMPP_SASL_PREFIX, XMPP_AUTH_NS, XMPP_TLS_NS, XMPP_CLIENT_NS, \
      XMPP_BIND_NS, XMPP_SESSION_NS, XMPP_DISCO_ITEMS_NS, xmpp_bind_as_attr
 
+from headstock.core.message import Message
+from headstock.core.roster import Roster
 from headstock.core.iq import Iq
 from headstock.core.presence import Presence
 from headstock.core.jid import JID
 from headstock.core.stanza import Stanza
 from headstock.core.message import Message
+
 from headstock.error import Error, HeadstockStreamError
+
+from headstock.extension.discovery import Disco
+from headstock.extension.pubsub import Service
+
 from headstock.lib.auth.digest import compute_digest_response
-from headstock.lib.registry import Registry
+from headstock.lib.registry import ProxyRegistry
 from headstock.lib.utils import generate_unique
 
 __all__ = ['Stream']
 
+_entities = (('presence', Presence),
+             ('pubsub', Service),
+             ('discovery', Disco))
+
 class Stream(object):
-    operations = ('connected', 'authenticated')
-    
-    def __init__(self, node_name, client=None, resource_name=None):
+    def __init__(self, node_name, client=None):
         self.node_name = node_name
         self.client = client
-        self.resource_name = resource_name
-        self.registry = Registry()
-        self.error_handler = Error(self.registry)
+        self.proxy_registry = ProxyRegistry(self)
         self.jid = None
 
     def get_client(self):
         return self.client
 
-    def set_registry(self, registry):
-        self.registry = registry
-        self.error_handler.registry = registry
-
     def set_auth(self, username, password):
         self.username = username
         self.password = password
 
+    def set_resource_name(self, resource_name):
+        self.resource_name = resource_name
+
+    def initialize_all(self, apart_from=None):
+        apart_from = apart_from or []
+        for (name, cls) in _entities:
+            if name not in apart_from:
+                entity = cls(self, self.proxy_registry)
+                entity.initialize_dispatchers()
+                setattr(self, name, entity)
+               
     def __trim_end_tag(self, element):
         """
         The stream element is sent opened. We trim the closing tag

@@ -10,11 +10,18 @@ from bridge.common import XMPP_DISCO_INFO_NS, XMPP_DISCO_ITEMS_NS
 __all__ = ['Disco']
 
 class Disco(object):
-    def __init__(self, stream):
+    def __init__(self, stream, proxy_registry=None):
         self.stream = stream
         self.to_jid = None
         self.from_jid = None
+        self.proxy_registry = proxy_registry
 
+    def initialize_dispatchers(self):
+        pass
+    
+    def cleanup_dispatchers(self):
+        pass
+    
     def set_jids(self, from_jid, to_jid):
         self.from_jid = from_jid
         self.to_jid = to_jid

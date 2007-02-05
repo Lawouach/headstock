@@ -1,37 +1,26 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from inspect import getmembers, ismethod
+__all__ = ['ProxyRegistry']
 
-__all__ = ['Registry']
+class ProxyRegistry(object):
+    def __init__(self, stream):
+        self.stream = stream
+        self._dispatchers = {}
+        
+    def register(self, name, proxy_dispatcher, namespace=None):
+        client = self.stream.get_client()
+        handler = client.get_handler()
+        handler.register_on_element(name, namespace=namespace,
+                                    dispatcher=proxy_dispatcher)
 
-class Registry:
-    def __init__(self, inst=None):
-        pass
+    def cleanup(self, name, namespace=None):
+        handler.unregister_on_element(name, namespace=namespace)
 
-    def run(self, operation, *args, **kwargs):
-        handler_name = 'handle_%s' % operation
-        if hasattr(self, handler_name):
-            cb = getattr(self, handler_name)
-            cb(*args, **kwargs)
+    def add_dispatcher(self, name, dispatcher):
+        self._dispatchers[name] = dispatcher
 
-    def register(self, name, cb):
-        """
-        Registers a callable to be applied to a XMPP response
-        starting with the element 'name'.
-
-        Keyword arguments:
-        name -- local name of the XML element
-        cb -- Python callable
-        """
-        name = name.replace('-', '_')
-        setattr(self, 'handle_%s' % name, cb)
-
-    def register_connected(self, cb):
-        self.handle_connected = cb
-
-    def register_authenticated(self, cb):
-        self.handle_authenticated = cb
-
-    def register_bound_to_resource(self, cb):
-        self.handle_bound = cb
+    def dispatch(self, name, caller, e):
+        if name in self._dispatchers:
+            self._dispatchers[name](caller, e)
+        

@@ -14,11 +14,18 @@ __all__ = ['Service', 'Subscribe']
 class Service(object):
     operations = ('item-not-found', 'bad-request')
 
-    def __init__(self, stream):
+    def __init__(self, stream, proxy_registry=None):
         self.stream = stream
         self.from_jid = None
         self.to_jid = None
+        self.proxy_registry = proxy_registry
 
+    def initialize_dispatchers(self):
+        pass
+
+    def cleanup_dispatchers(self):
+        pass
+    
     def set_jids(self, from_jid, to_jid):
         self.from_jid = from_jid
         self.to_jid = to_jid
