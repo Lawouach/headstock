@@ -20,6 +20,9 @@ class ProxyRegistry(object):
     def add_dispatcher(self, name, dispatcher):
         self._dispatchers[name] = dispatcher
 
+    def has_dispatcher(self, name):
+        return name in self._dispatchers
+
     def dispatch(self, name, caller, e):
         if name in self._dispatchers:
             self._dispatchers[name](caller, e)

@@ -12,10 +12,12 @@ import md5
 import sha
 import random
 
+__all__ = ['challenge_to_dict', 'compute_digest_response']
+
 H = lambda val: md5.new(val).digest()
 HH = lambda val: md5.new(val).hexdigest()
 
-def _challenge_to_dict(challenge):
+def challenge_to_dict(challenge):
     decoded = base64.b64decode(challenge)
     params = {}
     tokens = decoded.split(',')
@@ -30,7 +32,7 @@ def _A1(params, username, password, **kwargs):
         # A1 = H( unq(username-value) ":" unq(realm-value) ":" passwd )
         #         ":" unq(nonce-value) ":" unq(cnonce-value)
         h_a1 = H('%s:%s:%s' % (username, params["realm"], password))
-        h_a1 = '%s:%s:%s' % (h_a1, params["nonce"], kwargs["cnonce"])
+        h_a1 = '%s:%s:%s' % (h_a1, params.get("nonce", ''), kwargs["cnonce"])
         authzid = kwargs.get('authzid', None)
         if authzid:
             h_a1 = "%s:%s" % (h_a1, authzid)
@@ -47,12 +49,12 @@ def _A2(params, digest_uri):
     else:
         raise NotImplementedError ("The 'qop' method is unknown: %s" % qop)
 
-def compute_digest_response(challenge, username, password, **kwargs):
+def compute_digest_response(params, username, password, **kwargs):
     """
     Computes and returns an encoded (base64) string based on the challenge and input values.
 
     Keyword arguments:
-    challenge -- encoded string sent by the XMPP component/server
+    params -- decode challange as a dictionnary
     username -- username string
     password -- password string
 
@@ -63,8 +65,6 @@ def compute_digest_response(challenge, username, password, **kwargs):
     will be computed)
     nc -- count of number of requests made so far by the client (default to '00000001')
     """
-    params = _challenge_to_dict(challenge)
-
     algorithm = params.get("algorithm", 'md5-sess')
     if algorithm is None:
         raise ValueError, "Missing 'algorithm' token within challenge"
@@ -73,8 +73,7 @@ def compute_digest_response(challenge, username, password, **kwargs):
     if not digest_uri:
         raise ValueError, "Missing 'digest-uri' token within challenge"
 
-    realm = params.get('realm', '')
-    params['realm'] = realm
+    realm = params['realm'] = params.get('realm', '')
     
     charset = params.get('charset', None)
     # If not present, the username and password must be encoded in ISO 8859-1
@@ -102,10 +101,9 @@ def compute_digest_response(challenge, username, password, **kwargs):
     H_A2 = HH(_A2(params, digest_uri))
 
     qop = params.get("qop", 'auth')
-    nonce = params['nonce']
+    nonce = params.get('nonce', '')
     nc = kwargs['nc']
     cnonce = kwargs['cnonce']
-    nonce = params['nonce']
     
     response = HH("%s:%s:%s:%s:%s:%s" % (H_A1, nonce, nc, cnonce, qop, H_A2))
     request = 'username="%s",realm="%s",nonce="%s",cnonce="%s",nc=%s,' % (username, realm, nonce, cnonce, nc)
