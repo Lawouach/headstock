@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from headstock.core import Entity
-from headstock.core.stanza import Stanza
+from headstock.protocol.core import Entity
+from headstock.protocol.core.stanza import Stanza
 
 from bridge import Element as E
 from bridge import Attribute as A
@@ -42,6 +42,9 @@ class Presence(Entity):
     def register_subscribe(self, handler):
         self.proxy_registry.add_dispatcher('presence.subscribe', handler)
         
+    def register_unsubscribe(self, handler):
+        self.proxy_registry.add_dispatcher('presence.unsubscribe', handler)
+        
     def register_subscribed(self, handler):
         self.proxy_registry.add_dispatcher('presence.subscribed', handler)
 
@@ -66,21 +69,22 @@ class Presence(Entity):
     # Public instance methods
     ############################################
     def allow_subscription(self, jid):
-        presence = Presence.create_presence(to_jid=jid, presence_type=u'subscribed')
-        self.stream.propagate(element=presence)
+        return Presence.create_presence(to_jid=jid, presence_type=u'subscribed')
         
     def reject_subscription(self, jid):
-        presence = Presence.create_presence(to_jid=jid, presence_type=u'unsubscribed')
-        self.stream.propagate(element=presence)
+        return Presence.create_presence(to_jid=jid, presence_type=u'unsubscribed')
 
     def cancel_subscription(self, jid):
-        presence = Presence.create_presence(to_jid=jid, presence_type=u'unsubscribed')
-        self.stream.propagate(element=presence)
+        return Presence.create_presence(to_jid=jid, presence_type=u'unsubscribed')
 
     def unsubscribe(self, jid):
-        presence = Presence.create_presence(to_jid=jid, presence_type=u'unsubscribe')
-        self.stream.propagate(element=presence)
+        return Presence.create_presence(to_jid=jid, presence_type=u'unsubscribe')
 
     def subscribe(self, jid):
-        presence = Presence.create_presence(to_jid=jid, presence_type=u'subscribe')
-        self.stream.propagate(element=presence)
+        return Presence.create_presence(to_jid=jid, presence_type=u'subscribe')
+
+    def offline(self, jid=None):
+        return Presence.create_presence(from_jid=jid, presence_type=u'unavailable')
+
+    def online(self, jid=None):
+        return Presence.create_presence(from_jid=jid)

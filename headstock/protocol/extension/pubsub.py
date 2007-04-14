@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from headstock.core.iq import Iq
+from headstock.protocol.core.iq import Iq
 from headstock.lib.utils import generate_unique
 
 from bridge import Element as E

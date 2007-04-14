@@ -36,3 +36,17 @@ class JID(object):
 
     def __repr__(self):
         return '<jid %s>' % self.__str__()
+
+    def domainid(self):
+        return self.domain
+
+    def nodeid(self):
+        if self.node and self.domain:
+            return "%s@%s" % (self.node, self.domain)
+        return self.domain
+
+    def ressourceid(self):
+        if self.node and self.domain and self.resource:
+            return "%s@%s/%s" % (self.node, self.domain, self.resource)
+        return self.domain
+        

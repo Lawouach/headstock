@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from headstock.core.stanza import Stanza
+from headstock.protocol.core.stanza import Stanza
 
 from bridge import Element as E
 from bridge import Attribute as A

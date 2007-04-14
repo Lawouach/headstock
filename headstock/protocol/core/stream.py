@@ -13,19 +13,19 @@ from bridge.common import XMPP_CLIENT_NS, XMPP_STREAM_NS, XMPP_STREAM_PREFIX,\
      XMPP_SASL_NS, XMPP_SASL_PREFIX, XMPP_AUTH_NS, XMPP_TLS_NS, XMPP_CLIENT_NS, \
      XMPP_BIND_NS, XMPP_SESSION_NS, XMPP_DISCO_ITEMS_NS, xmpp_bind_as_attr
 
-from headstock.core import Entity
-from headstock.core.message import Message
-from headstock.core.roster import Roster
-from headstock.core.iq import Iq
-from headstock.core.presence import Presence
-from headstock.core.jid import JID
-from headstock.core.stanza import Stanza, StanzaError
-from headstock.core.message import Message
+from headstock.protocol.core import Entity
+from headstock.protocol.core.message import Message
+from headstock.protocol.core.roster import Roster
+from headstock.protocol.core.iq import Iq
+from headstock.protocol.core.presence import Presence
+from headstock.protocol.core.jid import JID
+from headstock.protocol.core.stanza import Stanza, StanzaError
+from headstock.protocol.core.message import Message
 
 from headstock.error import Error, HeadstockStreamError
 
-from headstock.extension.discovery import Disco
-from headstock.extension.pubsub import Service
+from headstock.protocol.extension.discovery import Disco
+from headstock.protocol.extension.pubsub import Service
 
 from headstock.lib.auth.plain import generate_credential
 from headstock.lib.auth.gaa import perform_authentication
@@ -41,9 +41,15 @@ _entities = (('presence', Presence),
              ('roster', Roster),
              ('message', Message))
 
+# Connection status
+# Each one implies the preceding one to have been reached
+DISCONNECTED = 0
+CONNECTED = 1
+AUTHENTICATED = 2
+BOUND = 3
+
 class Stream(object):
-    def __init__(self, node_name, client=None):
-        self.node_name = node_name
+    def __init__(self, client=None):
         self.client = client
         self.proxy_registry = ProxyRegistry(self)
         self.stream_error = StreamError(self, self.proxy_registry)
@@ -51,9 +57,8 @@ class Stream(object):
         self.sasl_error = SaslError(self, self.proxy_registry)
         self.jid = None
         self.use_tls = False
-        self._on_connected = None
-        self._on_authenticated = None
-        self._on_bound = None
+        self.node_name = None
+        self.connection_status = DISCONNECTED
         
     def get_client(self):
         return self.client
@@ -64,6 +69,12 @@ class Stream(object):
 
     def set_resource_name(self, resource_name):
         self.resource_name = resource_name
+
+    def set_node_name(self, node_name):
+        self.node_name = node_name
+
+    def enable_tls(self):
+        self.use_tls = True
 
     def initialize_all(self, apart_from=None):
         self.stream_error.initialize_dispatchers()
@@ -118,8 +129,7 @@ class Stream(object):
         self.propagate(data=data)
 
     def _reset_stream_header(self):
-        if callable(self._on_connected):
-            self._on_connected(self)
+        self.connection_status = CONNECTED
         parser = self.client.get_parser()
         parser.reset()
         self._send_stream_header()
@@ -184,8 +194,7 @@ class Stream(object):
         self.propagate(element=response)
 
     def _handle_authenticated(self, e):
-        if callable(self._on_authenticated):
-            self._on_authenticated(self)
+        self.connection_status = AUTHENTICATED
         self._reset_stream_header()
 
     def _handle_binding(self, e):
@@ -211,9 +220,11 @@ class Stream(object):
         handler.unregister_on_element('jid', namespace=XMPP_BIND_NS)
         self.jid = JID.parse(e.xml_text)
         
-        if callable(self._on_bound):
-            self._on_bound(self)
-            
+        iq = self.roster.retrieve_roster_list()
+        self.propagate(element=iq)
+        
+        self.connection_status = BOUND
+        
         presence = Presence.create_presence(to_jid=self.node_name)
         iq = Iq.create_get_iq(to_jid=self.node_name, stanza_id=generate_unique())
         query = E(u'query', namespace=XMPP_DISCO_ITEMS_NS, parent=iq)

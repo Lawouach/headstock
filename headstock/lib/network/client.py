@@ -185,6 +185,7 @@ class ThreadedClient(threading.Thread):
         self._parser = self._handler = None
         
     def propagate(self, data, size=4096):
+        print data
         self.conn.send(data)
     
     def run(self):
@@ -192,9 +193,9 @@ class ThreadedClient(threading.Thread):
             self.lock.acquire()
             conn = self.conn
             self.lock.release()
-            
-            fds = select.select([conn], [], [], 0.1)[0]
 
+            fds = select.select([conn], [], [], 0.1)[0]
+            
             if fds:
                 data = None
                 try:

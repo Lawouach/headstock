@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from headstock.core import Entity
-from headstock.core.stanza import Stanza
+from headstock.protocol.core import Entity
+from headstock.protocol.core.stanza import Stanza
 
 from bridge import Element as E
 from bridge import Attribute as A
@@ -75,4 +75,10 @@ class Message(Entity):
         if thread:
             E(u'thread', content=thread, namespace=XMPP_CLIENT_NS, parent=msg)
         return msg
-    create_message = classmethod(create_message)
+    create_message = classmethod(create_message) 
+    
+    ############################################
+    # Public instance methods
+    ############################################
+    def chat(self, to_jid, body, lang=None):
+        return Message.create_message(to_jid=to_jid, body=body, type=u'chat', lang=lang)

@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from headstock.core.stanza import Stanza
-from headstock.core import Entity
-from headstock.core.iq import Iq
+from headstock.protocol.core.stanza import Stanza
+from headstock.protocol.core import Entity
+from headstock.protocol.core.iq import Iq
 from headstock.lib.utils import generate_unique
 
 #####################################################################################
@@ -46,6 +46,9 @@ class Roster(Entity):
 
     def register_on_list(self, handler):
         self.proxy_registry.add_dispatcher('roster.result', handler)
+        
+    def register_on_set(self, handler):
+        self.proxy_registry.add_dispatcher('roster.set', handler)
     
     ############################################
     # Class methods
@@ -83,4 +86,4 @@ class Roster(Entity):
                               stanza_id=generate_unique())
         E(u'query', namespace=XMPP_ROSTER_NS, parent=iq)             
 
-        self.stream.propagate(element=iq)
+        return iq

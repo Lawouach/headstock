@@ -8,7 +8,7 @@
 #####################################################################################
 
 from headstock.error import *
-from headstock.core import Entity
+from headstock.protocol.core import Entity
 
 from bridge import Element as E
 from bridge import Attribute as A
