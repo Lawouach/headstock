@@ -26,6 +26,8 @@ from headstock.error import Error, HeadstockStreamError
 
 from headstock.protocol.extension.discovery import Disco
 from headstock.protocol.extension.pubsub import Service
+from headstock.protocol.extension.si import SI
+from headstock.protocol.extension.version import Version
 
 from headstock.lib.auth.plain import generate_credential
 from headstock.lib.auth.gaa import perform_authentication
@@ -39,7 +41,9 @@ _entities = (('presence', Presence),
              ('pubsub', Service),
              ('discovery', Disco),
              ('roster', Roster),
-             ('message', Message))
+             ('message', Message),
+             ('si', SI),
+             ('version', Version))
 
 # Connection status
 # Each one implies the preceding one to have been reached
@@ -100,14 +104,14 @@ class Stream(object):
     def register_on_bound(self, handler):
         self._on_bound = handler
                
-    def __trim_end_tag(self, element):
+    def __trim_end_tag(self, element, omit_decl=False):
         """
         The stream element is sent opened. We trim the closing tag
         manually.
         """
-        xmlstr = element.xml()
+        xmlstr = element.xml(indent=False, omit_declaration=omit_decl).strip()
         if xmlstr[-2:] == '/>':
-            return '%s>' % xmlstr[:-2]
+            return '%s>' % xmlstr[:-2].rstrip()
         
         if element.xml_prefix:
             token = '</%s:%s>' % (element.xml_prefix, element.xml_name)
@@ -117,7 +121,7 @@ class Stream(object):
         pos = 0 - len(token)
         return xmlstr[:pos]
 
-    def _send_stream_header(self):
+    def _send_stream_header(self, omit_decl=False):
         attributes = {u'to': self.node_name, u'version': u'1.0',
                       u'id': generate_unique()}
         stream = E(u'stream', attributes=attributes,
@@ -125,21 +129,21 @@ class Stream(object):
 
         A(u'xmlns', value=XMPP_CLIENT_NS, parent=stream)
 
-        data = self.__trim_end_tag(stream)
+        data = self.__trim_end_tag(stream, omit_decl)
         self.propagate(data=data)
 
-    def _reset_stream_header(self):
+    def _reset_stream_header(self, omit_decl=False):
         self.connection_status = CONNECTED
         parser = self.client.get_parser()
         parser.reset()
-        self._send_stream_header()
+        self._send_stream_header(omit_decl)
 
     def _handle_features(self, e):
         mechanisms = e.get_child('mechanisms', ns=XMPP_SASL_NS)
         support_tls = e.get_child('starttls', ns=XMPP_TLS_NS)
         if support_tls and self.use_tls:
-            handler = self.client.get_handler()
-            handler.register_on_element('proceed', namespace=XMPP_TLS_NS,
+            parser = self.client.get_parser()
+            parser.register_on_element('proceed', namespace=XMPP_TLS_NS,
                                         dispatcher=self._handle_tls)
             tls = E(u'starttls', namespace=XMPP_TLS_NS)
             self.propagate(element=tls)
@@ -148,7 +152,7 @@ class Stream(object):
             
     def _handle_tls(self, e):
         self.client.start_tls()
-        self._reset_stream_header()
+        self._reset_stream_header(omit_decl=True)
 
     def _handle_mechanisms(self, e):
         mechanisms = [m.xml_text for m in e.xml_children]
@@ -198,8 +202,8 @@ class Stream(object):
         self._reset_stream_header()
 
     def _handle_binding(self, e):
-        handler = self.client.get_handler()
-        handler.unregister_on_element('bind', namespace=XMPP_BIND_NS)
+        parser = self.client.get_parser()
+        parser.unregister_on_element('bind', namespace=XMPP_BIND_NS)
         iq = Iq.create_set_iq(stanza_id=generate_unique())
         bind = E(u'bind', namespace=XMPP_BIND_NS, parent=iq)
         if self.resource_name is not None:
@@ -209,35 +213,37 @@ class Stream(object):
         self.propagate(element=iq)
 
     def _handle_session(self, e):
-        handler = self.client.get_handler()
-        handler.unregister_on_element('session', namespace=XMPP_SESSION_NS)
+        parser = self.client.get_parser()
+        parser.unregister_on_element('session', namespace=XMPP_SESSION_NS)
         iq = Iq.create_set_iq(stanza_id=generate_unique())
         session = E(u'session', namespace=XMPP_SESSION_NS, parent=iq)
         self.propagate(element=iq)
 
     def _handle_jid(self, e):
-        handler = self.client.get_handler()
-        handler.unregister_on_element('jid', namespace=XMPP_BIND_NS)
+        parser = self.client.get_parser()
+        parser.unregister_on_element('jid', namespace=XMPP_BIND_NS)
         self.jid = JID.parse(e.xml_text)
         
-        iq = self.roster.retrieve_roster_list()
+        iq = Roster.retrieve_roster_list(unicode(self.jid), stanza_id=generate_unique())
         self.propagate(element=iq)
         
         self.connection_status = BOUND
         
-        presence = Presence.create_presence(to_jid=self.node_name)
+        presence = Presence.create_presence() #to_jid=self.node_name)
         iq = Iq.create_get_iq(to_jid=self.node_name, stanza_id=generate_unique())
         query = E(u'query', namespace=XMPP_DISCO_ITEMS_NS, parent=iq)
-        data = presence.xml(omit_declaration=True)
-        data = data + iq.xml(omit_declaration=True)
+        data = presence.xml(indent=False, omit_declaration=True)
+        data = data + iq.xml(indent=False, omit_declaration=True)
         self.propagate(data=data)
+
+        if callable(self._on_bound):
+            self._on_bound()
 
     def _disco(self):
         presence = E(u'presence', namespace=XMPP_CLIENT_NS)
         data = presence.xml(omit_declaration=True)
 
-        iq = Iq.create_get_iq(to_jid=self.node_name, stanza_id=generate_unique())
-        query = E(u'query', namespace=XMPP_DISCO_ITEMS_NS, parent=iq)
+        iq = Disco.create_item_query(to_jid=self.node_name, stanza_id=generate_unique())
         data = data + iq.xml(omit_declaration=True)
 
         self.propagate(data=data)
@@ -246,35 +252,33 @@ class Stream(object):
         """
         Initiates the stream exchange with the remote component service
         """
-        handler = self.client.get_handler()
-        handler.register_on_element('features', namespace=XMPP_STREAM_NS,
+        parser = self.client.get_parser()
+        parser.register_on_element('features', namespace=XMPP_STREAM_NS,
                                     dispatcher=self._handle_features)
-        handler.register_on_element_per_level('challenge', 1, namespace=XMPP_SASL_NS,
+        parser.register_on_element_per_level('challenge', 1, namespace=XMPP_SASL_NS,
                                               dispatcher=self._handle_challenge)
-        handler.register_on_element_per_level('success', 1, namespace=XMPP_SASL_NS,
+        parser.register_on_element_per_level('success', 1, namespace=XMPP_SASL_NS,
                                               dispatcher=self._handle_authenticated)
-        handler.register_on_element('bind', namespace=XMPP_BIND_NS,
+        parser.register_on_element('bind', namespace=XMPP_BIND_NS,
                                     dispatcher=self._handle_binding)
-        handler.register_on_element('session', namespace=XMPP_SESSION_NS,
+        parser.register_on_element('session', namespace=XMPP_SESSION_NS,
                                     dispatcher=self._handle_session)
-        handler.register_on_element('jid', namespace=XMPP_BIND_NS,
+        parser.register_on_element('jid', namespace=XMPP_BIND_NS,
                                     dispatcher=self._handle_jid)
         self._send_stream_header()
 
-    def propagate(self, data=None, stanza=None, element=None):
+    def propagate(self, data=None, element=None):
         """
         Send to the remote host the given stanza.
         Returns the Element instance of the returned response
 
         Keyword arguments:
         data -- a string of data to send as-is
-        stanza -- a stanza instance (Message, Iq, Presence) (or)
         element -- an Element instance representing a stanza (or)
         """
         if element:
-            data = element.xml(omit_declaration=True)
-        elif stanza:
-            data = stanza.to_bridge().xml(omit_declaration=True)
+            data = element.xml(indent=False, omit_declaration=True)
+
         if data:
             self.client.propagate(data)
     

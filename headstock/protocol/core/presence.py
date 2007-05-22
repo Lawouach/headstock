@@ -56,7 +56,7 @@ class Presence(Entity):
     ############################################
     def create_presence(cls, from_jid=None, to_jid=None, presence_type=None,
                         status=None, show=None):
-        stanza = Stanza(u'presence', from_jid, to_jid, presence_type).to_bridge()
+        stanza = Stanza.create(u'presence', from_jid, to_jid, presence_type)
         if status:
             E(u'status', content=status, namespace=stanza.xml_ns, parent=stanza)
         if show:
@@ -65,23 +65,25 @@ class Presence(Entity):
         return stanza
     create_presence = classmethod(create_presence)
 
-    ############################################
-    # Public instance methods
-    ############################################
     def allow_subscription(self, jid):
         return Presence.create_presence(to_jid=jid, presence_type=u'subscribed')
+    allow_subscription = classmethod(allow_subscription)
         
     def reject_subscription(self, jid):
         return Presence.create_presence(to_jid=jid, presence_type=u'unsubscribed')
+    reject_subscription = classmethod(reject_subscription)
 
     def cancel_subscription(self, jid):
         return Presence.create_presence(to_jid=jid, presence_type=u'unsubscribed')
+    cancel_subscription = classmethod(cancel_subscription)
 
     def unsubscribe(self, jid):
         return Presence.create_presence(to_jid=jid, presence_type=u'unsubscribe')
-
+    unsubscribe = classmethod(unsubscribe)
+    
     def subscribe(self, jid):
         return Presence.create_presence(to_jid=jid, presence_type=u'subscribe')
+    subscribe = classmethod(subscribe)
 
     def offline(self, jid=None):
         return Presence.create_presence(from_jid=jid, presence_type=u'unavailable')

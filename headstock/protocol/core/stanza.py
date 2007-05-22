@@ -12,53 +12,29 @@ from headstock.protocol.core import Entity
 
 from bridge import Element as E
 from bridge import Attribute as A
-from bridge.common import XMPP_CLIENT_NS, XMPP_PUBSUB_NS
+from bridge.common import XMPP_CLIENT_NS, XMPP_PUBSUB_NS, \
+     XMPP_STANZA_ERROR_NS, XML_NS
 
 __all__ = ['Stanza', 'StanzaError']
 
 class Stanza(object):
-    def __init__(self, node_name, from_jid=None, to_jid=None, stanza_type=None, stanza_id=None):
-        self.node_name = node_name
-        self.from_jid = from_jid
-        self.to_jid = to_jid
-        self.stanza_id = stanza_id
-        self.stanza_type = stanza_type
-
-    def to_bridge(self, parent=None):
+    def create(cls, node_name, from_jid=None, to_jid=None,
+               stanza_type=None, stanza_id=None, parent=None):
         attributes = {}
-        if self.stanza_type:
-            attributes = {u'type': self.stanza_type}
-        stanza = E(self.node_name, attributes=attributes, parent=parent)
-        if self.from_jid:
-            A(u'from', value=unicode(self.from_jid), parent=stanza)
-        if self.to_jid:
-            A(u'to', value=unicode(self.to_jid), parent=stanza)
-        if self.stanza_id:
-            A(u'id', value=self.stanza_id, parent=stanza)
+        if stanza_type:
+            attributes = {u'type': stanza_type}
+        stanza = E(node_name, attributes=attributes, parent=parent)
+        if from_jid:
+            A(u'from', value=unicode(from_jid), parent=stanza)
+        if to_jid:
+            A(u'to', value=unicode(to_jid), parent=stanza)
+        if stanza_id:
+            A(u'id', value=stanza_id, parent=stanza)
 
         stanza.update_prefix(None, None, XMPP_CLIENT_NS, False)
             
         return stanza
-
-    def from_bridge(self, element):
-        from_jid = element.get_attribute('from')
-        if from_jid:
-            self.from_jid = from_jid
-            
-        to_jid = element.get_attribute('to')
-        if to_jid:
-            self.to_jid = to_jid
-            
-        stanza_type = element.get_attribute('type')
-        if stanza_type:
-            self.stanza_type = stanza_type
-            
-        stanza_id = element.get_attribute('id')
-        if stanza_id:
-            self.stanza_id = stanza_id 
-    
-    def xml(self):
-        return self.to_bridge().xml(omit_declaration=True)
+    create = classmethod(create)
 
 class StanzaError(Entity):
     def __init__(self, stream, proxy_registry=None):
@@ -156,3 +132,135 @@ class StanzaError(Entity):
 
     def register_unexpected_request(self, handler):
         self.proxy_registry.add_dispatcher('stanza.error.unexpected_request', handler)
+
+    ############################################
+    # Class API
+    ############################################
+    def _create_error(cls, condition, type, legacy=None, text=None, lang=None, parent=None):
+        attrs = {u'type': type}
+        if legacy:
+            attrs[u'code'] = legacy
+        error = E(u'error', attributes=attrs,
+                  namespace=XMPP_CLIENT_NS, parent=parent)
+        E(condition, namespace=XMPP_STANZA_ERROR_NS,
+          parent=error)
+        if text:
+            text = E(u'text', content=text, parent=error,
+                     namespace=XMPP_STANZA_ERROR_NS)
+            if lang:
+                A(u'lang', value=lang, namespace=XML_NS, parent=text)
+
+        return error
+    _create_error = classmethod(_create_error)
+
+    @classmethod
+    def create_bad_request(cls, text=None, lang=None, parent=None):
+        return StanzaError._create_error(u'bad-request', u'modify', u'400',
+                                         text, lang, parent)
+
+    @classmethod
+    def create_conflict(cls, text=None, lang=None, parent=None):
+        return StanzaError._create_error(u'conflict', u'cancel', u'409',
+                                         text, lang, parent)
+
+    @classmethod
+    def create_feature_not_implemented(cls, text=None, lang=None, parent=None):
+        return StanzaError._create_error(u'feature-not-implemented',
+                                         u'cancel', u'501',
+                                         text, lang, parent)
+
+    @classmethod
+    def create_forbidden(cls, text=None, lang=None, parent=None):
+        return StanzaError._create_error(u'forbidden', u'auth', u'403',
+                                         text, lang, parent)
+
+    @classmethod
+    def create_gone(cls, text=None, lang=None, parent=None):
+        return StanzaError._create_error(u'gone', u'modify', u'302',
+                                         text, lang, parent)
+
+    @classmethod
+    def create_internal_server_error(cls, text=None, lang=None, parent=None):
+        return StanzaError._create_error(u'internal-server-error', u'wait', u'500',
+                                         text, lang, parent)
+
+    @classmethod
+    def create_item_not_found(cls, text=None, lang=None, parent=None):
+        return StanzaError._create_error(u'item-not-found', u'cancel', u'404',
+                                         text, lang, parent)
+
+    @classmethod
+    def create_jid_malformed(cls, text=None, lang=None, parent=None):
+        return StanzaError._create_error(u'jid-malformed', u'cancel', u'400',
+                                         text, lang, parent)
+
+    @classmethod
+    def create_not_acceptable(cls, text=None, lang=None, parent=None):
+        return StanzaError._create_error(u'not-acceptable', u'modify', u'406',
+                                         text, lang, parent)
+
+    @classmethod
+    def create_not_allowed(cls, text=None, lang=None, parent=None):
+        return StanzaError._create_error(u'not-allowed', u'modify', u'405',
+                                         text, lang, parent)
+
+    @classmethod
+    def create_not_authorized(cls, text=None, lang=None, parent=None):
+        return StanzaError._create_error(u'not-authorized', u'auth', u'401',
+                                         text, lang, parent)
+
+    @classmethod
+    def create_payment_required(cls, text=None, lang=None, parent=None):
+        return StanzaError._create_error(u'payment-required', u'auth', u'402',
+                                         text, lang, parent)
+    
+    @classmethod
+    def create_recipient_unavailable(cls, text=None, lang=None, parent=None):
+        return StanzaError._create_error(u'recipient-unavailable', u'wait', u'404',
+                                         text, lang, parent)
+    
+    @classmethod
+    def create_redirect(cls, text=None, lang=None, parent=None):
+        return StanzaError._create_error(u'redirect', u'modify', u'302',
+                                         text, lang, parent)
+    
+    @classmethod
+    def create_registration_required(cls, text=None, lang=None, parent=None):
+        return StanzaError._create_error(u'registration-required', u'auth', u'407',
+                                         text, lang, parent)
+    
+    @classmethod
+    def create_remote_server_not_found(cls, text=None, lang=None, parent=None):
+        return StanzaError._create_error(u'remote-server-not-found', u'cancel', u'404',
+                                         text, lang, parent)
+    
+    @classmethod
+    def create_remote_server_timeout(cls, text=None, lang=None, parent=None):
+        return StanzaError._create_error(u'remote-server-timeout', u'wait', u'504',
+                                         text, lang, parent)
+    
+    @classmethod
+    def create_resource_contraint(cls, text=None, lang=None, parent=None):
+        return StanzaError._create_error(u'resource-constraint', u'wait', u'500',
+                                         text, lang, parent)
+    
+    @classmethod
+    def create_service_unavailable(cls, text=None, lang=None, parent=None):
+        return StanzaError._create_error(u'service-unavailable', u'cancel', u'503',
+                                         text, lang, parent)
+    
+    @classmethod
+    def create_subscription_required(cls, text=None, lang=None, parent=None):
+        return StanzaError._create_error(u'subscription-required', u'auth', u'407',
+                                         text, lang, parent)
+    
+    @classmethod
+    def create_undefined_condition(cls, type=u'cancel', text=None, lang=None, parent=None):
+        return StanzaError._create_error(u'undefined-condition', type, u'500',
+                                         text, lang, parent)
+
+    @classmethod
+    def create_unexpected_request(cls, text=None, lang=None, parent=None):
+        return StanzaError._create_error(u'unexpected-request', u'wait', u'400',
+                                         text, lang, parent)
+    

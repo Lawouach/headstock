@@ -10,12 +10,14 @@ class ProxyRegistry(object):
         
     def register(self, name, proxy_dispatcher, namespace=None):
         client = self.stream.get_client()
-        handler = client.get_handler()
-        handler.register_on_element(name, namespace=namespace,
-                                    dispatcher=proxy_dispatcher)
+        parser = client.get_parser()
+        parser.register_on_element(name, namespace=namespace,
+                                   dispatcher=proxy_dispatcher)
 
     def cleanup(self, name, namespace=None):
-        handler.unregister_on_element(name, namespace=namespace)
+        client = self.stream.get_client()
+        parser = client.get_parser()
+        parser.unregister_on_element(name, namespace=namespace)
 
     def add_dispatcher(self, name, dispatcher):
         self._dispatchers[name] = dispatcher

@@ -1,12 +1,15 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from xml.sax.saxutils import escape
 from headstock.protocol.core import Entity
 from headstock.protocol.core.stanza import Stanza
+from headstock.api.im import Body, Subject, Thread
 
 from bridge import Element as E
 from bridge import Attribute as A
-from bridge.common import XMPP_CLIENT_NS, XML_NS, XML_PREFIX
+from bridge.common import XMPP_CLIENT_NS, XML_NS, XML_PREFIX, \
+     XMPP_XHTML_IM_NS, XHTML1_NS
 
 __all__ = ['Message']
 
@@ -41,15 +44,19 @@ class Message(Entity):
     
     def register_on_chat_with(self, jid, handler):
         self.proxy_registry.add_dispatcher('message.chat.%s' % jid, handler)
+        
+    def unregister_on_chat_with(self, jid):
+        self.proxy_registry.cleanup('message.chat.%s' % jid)
     
     ############################################
     # Class methods
     ############################################
-    def create_message(cls, from_jid=None, to_jid=None, type=None,
-                       body=None, subject=None, thread=None, id=None, lang=None):
+    def create_message(cls, from_jid=None, to_jid=None, msg_type=None,
+                       bodies=None, subjects=None, threads=None, id=None):
         msg = E(u'message', namespace=XMPP_CLIENT_NS)
 
-        A(u'type', value=type or u'normal', parent=msg)
+        if msg_type:
+            A(u'type', value=msg_type, parent=msg)
         
         if from_jid:
             A(u'from', value=from_jid, parent=msg)
@@ -57,28 +64,51 @@ class Message(Entity):
             A(u'to', value=to_jid, parent=msg)
         if id:
             A(u'id', value=id, parent=msg)
-        if lang:
-            A(u'lang', value=lang, prefix=XML_PREFIX, namespace=XML_NS, parent=msg)
             
-        if body and isinstance(body, basestring):
-            E(u'body', content=body, namespace=XMPP_CLIENT_NS, parent=msg)
-        elif body and isinstance(body, list):
-            for chunk in body:
-                E(u'body', content=chunk, namespace=XMPP_CLIENT_NS, parent=msg)
-                
-        if subject and isinstance(subject, basestring):
-            E(u'subject', content=subject, namespace=XMPP_CLIENT_NS, parent=msg)
-        elif subject and isinstance(subject, list):
-            for chunk in subject:
-                E(u'subject', content=chunk, namespace=XMPP_CLIENT_NS, parent=msg)
-                
-        if thread:
-            E(u'thread', content=thread, namespace=XMPP_CLIENT_NS, parent=msg)
+        if bodies is None:
+            bodies = []
+            
+        if isinstance(bodies, Body):
+            bodies = [body]
+            
+        for body in bodies:
+            plain_body = E(u'body', content=escape(body.plain_body),
+                           namespace=XMPP_CLIENT_NS, parent=msg)
+            if body.lang:
+                A(u'lang', value=body.lang, prefix=XML_PREFIX,
+                  namespace=XML_NS, parent=plain_body)
+            if body.as_xhtml:
+                xhtml_im = E(u'html', namespace=XMPP_XHTML_IM_NS, parent=msg)
+                xhtml_body = E(u'body', namespace=XHTML1_NS, parent=xhtml_im)
+                if body.lang:
+                    A(u'lang', value=body.lang, prefix=XML_PREFIX,
+                      namespace=XML_NS, parent=xhtml_body)
+                body.xhtml_body.xml_parent = xhtml_body
+                xhtml_body.xml_children.append(body.xhtml_body)
+
+        if subjects is None:
+            subjects = []
+
+        if isinstance(subjects, Subject):
+            subjects = [subjects]
+
+        for subject in subjects:
+            sub = E(u'subject', content=subject.body,
+                    namespace=XMPP_CLIENT_NS, parent=msg)
+            if subject.lang:
+                A(u'lang', value=subject.lang, prefix=XML_PREFIX,
+                  namespace=XML_NS, parent=sub)
+
+        if threads is None:
+            threads = []
+
+        if isinstance(threads, Thread):
+            threads = [threads]
+
+        for thread in threads:
+            E(u'thread', content=thread.text,
+              namespace=XMPP_CLIENT_NS, parent=msg)
+
         return msg
     create_message = classmethod(create_message) 
     
-    ############################################
-    # Public instance methods
-    ############################################
-    def chat(self, to_jid, body, lang=None):
-        return Message.create_message(to_jid=to_jid, body=body, type=u'chat', lang=lang)
