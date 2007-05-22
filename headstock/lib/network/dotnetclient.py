@@ -75,7 +75,7 @@ class ThreadedClient(object):
             self.th = None
         
     def propagate(self, data, size=4096):
-        print "-> ", data
+        #print "-> ", data
         bytes = System.Text.Encoding.UTF8.GetBytes(data)
         try:
             self.lock.acquire()
@@ -100,7 +100,7 @@ class ThreadedClient(object):
             finally:
                 self.lock.release()
             if data:
-                print "<- ", data
+                #print "<- ", data
                 if self.incoming:
                     self.incoming.put(data)
                 if self.incoming_cb:

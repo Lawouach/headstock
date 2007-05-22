@@ -78,7 +78,7 @@ class AsyncClient(asyncore.dispatcher):
 
     def handle_read(self):
         data = self.recv(4096)
-        print data
+        #print data
         if self._parser and data:
             self._parser.feed(data)
 
@@ -100,7 +100,7 @@ class AsyncClient(asyncore.dispatcher):
             return 0
 
     def handle_write(self):
-        print self.buffer
+        #print self.buffer
         sent = self.send(''.join(self.buffer))
         self.buffer = self.buffer[sent:]
 
