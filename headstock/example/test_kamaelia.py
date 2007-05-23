@@ -39,7 +39,7 @@ class Demo:
     def stop(self):
         if self.c.connected:
             self.s.terminate()
-            self.c.stop()
+            self.c.disconnect()
             self.s = self.c = None
 
     def version_info_received(self, info):
@@ -122,6 +122,7 @@ class Demo:
         self.s.set_node_name(u'localhost')
         self.s.set_auth(u'sylvain', u'test')
         self.s.set_resource_name(u'Home')
+        self.c.connect()
         self.s.initiate()
         self.loop()
 

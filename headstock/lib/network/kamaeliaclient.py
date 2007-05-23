@@ -34,12 +34,15 @@ class ThreadedClient(threadedcomponent):
 
     def start_tls(self):
         raise NotImplemented
-       
+
+    def connect(self):
+        self.client.activate()
+    
     def propagate(self, data, size=4096):
         print "-> ", data
         self.send(data, "outbox")
 
-    def stop(self):
+    def disconnect(self):
         self.keep_running = False
 
     def main(self):
