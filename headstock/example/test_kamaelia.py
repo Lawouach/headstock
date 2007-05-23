@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from headstock.lib.network.kamaeliaclient import ThreadedClient
+from headstock.lib.network.kamaeliaclient import KamaeliaClient
 from headstock.protocol.core.stream import Stream
 from headstock.protocol.core.message import Message
 from headstock.api.session import Session
@@ -21,7 +21,7 @@ def cert_passphrase():
 class Demo:
     def __init__(self):
         self.keep_alive = True
-        self.c = ThreadedClient('localhost', 5222)
+        self.c = KamaeliaClient('localhost', 5222)
         parser = DispatchParser()
         self.c.set_parser(parser)
 
@@ -34,7 +34,7 @@ class Demo:
     def loop(self):
         from Axon.Scheduler import scheduler
         self.c.activate()
-        scheduler.run.runThreads(slowmo=0.1) 
+        scheduler.run.runThreads(slowmo=0.01) 
 
     def stop(self):
         if self.c.connected:
@@ -107,9 +107,9 @@ class Demo:
         print err
 
     def run(self):
-        #self.c.certificate = file('./server.crt', 'r').read()
-        #self.c.certificate_key = file('./server.key', 'r').read()
-        #self.c.certificate_password_cb = cert_passphrase
+        self.c.certificate = file('./server.crt', 'r').read()
+        self.c.certificate_key = file('./server.key', 'r').read()
+        self.c.certificate_password_cb = cert_passphrase
 
         self.sess.error.on_received(self.got_error)
         self.sess.contacts.on_update(self.say_hello)
@@ -122,6 +122,7 @@ class Demo:
         self.s.set_node_name(u'localhost')
         self.s.set_auth(u'sylvain', u'test')
         self.s.set_resource_name(u'Home')
+        self.s.enable_tls()
         self.c.connect()
         self.s.initiate()
         self.loop()

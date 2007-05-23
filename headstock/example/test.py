@@ -114,9 +114,9 @@ class Demo:
         print err
 
     def run(self):
-        #self.c.certificate = file('./server.crt', 'r').read()
-        #self.c.certificate_key = file('./server.key', 'r').read()
-        #self.c.certificate_password_cb = cert_passphrase
+        self.c.certificate = file('./server.crt', 'r').read()
+        self.c.certificate_key = file('./server.key', 'r').read()
+        self.c.certificate_password_cb = cert_passphrase
 
         self.sess.error.on_received(self.got_error)
         self.sess.contacts.on_update(self.say_hello)
@@ -127,8 +127,9 @@ class Demo:
         self.sess.version.on_received(self.version_info_received)
         self.s.register_on_bound(self.doit)
         self.s.set_node_name(u'localhost')
-        self.s.set_auth(u'sylvain', u'test')
+        self.s.set_auth(u'test', u'test')
         self.s.set_resource_name(u'Home')
+        self.s.enable_tls()
         self.c.connect()
         self.c.start()
         self.s.initiate()
