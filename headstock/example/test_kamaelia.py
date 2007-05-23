@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from headstock.lib.network.threadedclient import ThreadedClient
+from headstock.lib.network.kamaeliaclient import ThreadedClient
 from headstock.protocol.core.stream import Stream
 from headstock.protocol.core.message import Message
 from headstock.api.session import Session
@@ -32,21 +32,14 @@ class Demo:
         self.sess.initialize_dispatchers()
         
     def loop(self):
-        client = self.c
-        parser = client.get_parser()
-        while self.keep_alive:
-            try:
-                data = client.incoming.get(timeout=0.01)
-                parser.feed(data)
-            except Queue.Empty:
-                pass
+        from Axon.Scheduler import scheduler
+        self.c.activate()
+        scheduler.run.runThreads(slowmo=0.1) 
 
     def stop(self):
         if self.c.connected:
             self.s.terminate()
-            self.c.disconnect()
-            self.c.join()
-            self.keep_alive = False
+            self.c.stop()
             self.s = self.c = None
 
     def version_info_received(self, info):
@@ -129,8 +122,6 @@ class Demo:
         self.s.set_node_name(u'localhost')
         self.s.set_auth(u'sylvain', u'test')
         self.s.set_resource_name(u'Home')
-        self.c.connect()
-        self.c.start()
         self.s.initiate()
         self.loop()
 

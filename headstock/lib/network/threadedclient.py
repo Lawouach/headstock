@@ -87,7 +87,7 @@ class ThreadedClient(threading.Thread):
         self.connected = False
         
     def propagate(self, data, size=4096):
-        #print "-> ", data
+        print "-> ", data
         self.conn.send(data)
     
     def run(self):
@@ -104,7 +104,7 @@ class ThreadedClient(threading.Thread):
                 self.lock.release()
 
             if data:
-                #print "<- ", data
+                print "<- ", data
                 if self.incoming:
                     self.incoming.put(data)
                 if self.incoming_cb:
