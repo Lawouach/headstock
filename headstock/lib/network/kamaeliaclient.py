@@ -39,7 +39,6 @@ class KamaeliaClient(threadedcomponent):
         return self._parser
 
     def start_tls(self):
-        raise NotImplemented
         from tlslite.api import X509, X509CertChain, parsePEMKey, TLSConnection
 
         x509 = X509()
@@ -51,11 +50,11 @@ class KamaeliaClient(threadedcomponent):
         connection = TLSConnection(self.client.sock)
         setattr(connection, 'fileno', connection.sock.fileno)
         connection.handshakeClientCert(certChain, privateKey)
-        self.client.postoffice.unlinkAll()
-        for ct in self.client.setupCSA(connection):
-            ct.activate()
-        self._dolink()
-        #self.client.CSA.socket = connection
+        self.client.CSA.socket = connection
+##         self.client.postoffice.unlinkAll()
+##         for ct in self.client.setupCSA(connection):
+##             ct.activate()
+##         self._dolink()
         #self.client.sock = connection
         
     def connect(self):
