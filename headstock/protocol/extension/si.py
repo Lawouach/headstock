@@ -13,7 +13,7 @@ from bridge.common import XMPP_SI_NS, XMPP_SI_FILE_TRANSFER_NS, \
 __all__ = ['SI']
 
 #####################################################################################
-# Defined in XEP-0095
+# Defined in XEP-0095
 #####################################################################################
 class SI(Entity):
     def __init__(self, stream, proxy_registry=None):
@@ -53,28 +53,22 @@ class SI(Entity):
     # Class API
     ############################################
     def create_no_valid_stream(cls, from_jid, to_jid, stanza_id=None):
-        iq = Iq.create_error_iq(from_jid=from_jid, to_jid=to_jid,
-                                stanza_id=stanza_id)
-        error = StanzaError._create_error(u'bad-request', u'cancel',
-                                          legacy=u'400', parent=iq)
-        E(u'no-valid-streams', namespace=XMPP_SI_NS, parent=error)
+        iq = StanzaError.create_bad_request(from_jid=from_jid, to_jid=to_jid,
+                                            stanza_id=stanza_id,
+                                            children=[E(u'no-valid-streams', namespace=XMPP_SI_NS)])
         return iq
     create_no_valid_stream = classmethod(create_no_valid_stream)
     
     def create_profile_not_understood(cls, from_jid, to_jid, stanza_id=None):
-        iq = Iq.create_error_iq(from_jid=from_jid, to_jid=to_jid,
-                                stanza_id=stanza_id)
-        error = StanzaError._create_error(u'bad-request', u'modify',
-                                          legacy=u'400', parent=iq)
-        E(u'bad-profile', namespace=XMPP_SI_NS, parent=error)
+        iq = StanzaError.create_bad_request(from_jid=from_jid, to_jid=to_jid,
+                                            stanza_id=stanza_id,
+                                            children=[E(u'bad-profile', namespace=XMPP_SI_NS)])
         return iq
     create_profile_not_understood = classmethod(create_profile_not_understood)
     
     def create_forbidden(cls, from_jid, to_jid, text=None, stanza_id=None):
-        iq = Iq.create_error_iq(from_jid=from_jid, to_jid=to_jid,
-                                stanza_id=stanza_id)
-        StanzaError._create_error(u'forbidden', u'cancel',
-                                  legacy=u'403', text=text, parent=iq)
+        iq = StanzaError.create_forbidden(from_jid=from_jid, to_jid=to_jid,
+                                          stanza_id=stanza_id)
         return iq
     create_forbidden = classmethod(create_forbidden)
 

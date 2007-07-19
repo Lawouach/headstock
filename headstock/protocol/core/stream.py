@@ -2,16 +2,17 @@
 # -*- coding: utf-8 -*-
 
 #####################################################################################
-# From RFC 3920
+# From RFC 3920
 # An XML stream is a container for the exchange of XML elements between any two
 # entities over a network.
 #####################################################################################
 
 from bridge import Element as E
 from bridge import Attribute as A
-from bridge.common import XMPP_CLIENT_NS, XMPP_STREAM_NS, XMPP_STREAM_PREFIX,\
+from bridge.common import XML_NS, XML_PREFIX, XMPP_CLIENT_NS, XMPP_STREAM_NS, XMPP_STREAM_PREFIX,\
      XMPP_SASL_NS, XMPP_SASL_PREFIX, XMPP_AUTH_NS, XMPP_TLS_NS, XMPP_CLIENT_NS, \
      XMPP_BIND_NS, XMPP_SESSION_NS, XMPP_DISCO_ITEMS_NS, xmpp_bind_as_attr
+from bridge.common import ANY_NAMESPACE
 
 from headstock.protocol.core import Entity
 from headstock.protocol.core.message import Message
@@ -22,20 +23,24 @@ from headstock.protocol.core.jid import JID
 from headstock.protocol.core.stanza import Stanza, StanzaError
 from headstock.protocol.core.message import Message
 
-from headstock.error import Error, HeadstockStreamError
+from headstock.error import Error, HeadstockStreamError, \
+     HeadstockInvalidStanzaError
 
 from headstock.protocol.extension.discovery import Disco
 from headstock.protocol.extension.pubsub import Service
 from headstock.protocol.extension.si import SI
+from headstock.protocol.extension.last import Last
+from headstock.protocol.extension.rpc import RPC
 from headstock.protocol.extension.version import Version
+from headstock.protocol.extension.inbandregistration import InBandRegistration
 
-from headstock.lib.auth.plain import generate_credential
+from headstock.lib.auth.plain import generate_credential, validate_credentials
 from headstock.lib.auth.gaa import perform_authentication
 from headstock.lib.auth.digest import challenge_to_dict, compute_digest_response
 from headstock.lib.registry import ProxyRegistry
-from headstock.lib.utils import generate_unique
+from headstock.lib.utils import generate_unique, extract_from_stanza
 
-__all__ = ['Stream', 'StreamError', 'SaslError']
+__all__ = ['Stream', 'ServerStream', 'StreamError', 'SaslError']
 
 _entities = (('presence', Presence),
              ('pubsub', Service),
@@ -43,18 +48,27 @@ _entities = (('presence', Presence),
              ('roster', Roster),
              ('message', Message),
              ('si', SI),
-             ('version', Version))
+             ('version', Version),
+             ('registration', InBandRegistration),
+             ('rpc', RPC),
+             ('last', Last))
 
 #Â Connection status
-# Each one implies the preceding one to have been reached
+# Each one implies the preceding one to have been realized
 DISCONNECTED = 0
 CONNECTED = 1
 AUTHENTICATED = 2
-BOUND = 3
+BOUND = 3 # after binding allowed
+ACTIVE = 4 # after session allowed
+AVAILABLE = 5 # after initial presence
 
+#############################################
+# Stream interface used on the client side
+#############################################
 class Stream(object):
     def __init__(self, client=None):
         self.client = client
+        self.connection_status = DISCONNECTED
         self.proxy_registry = ProxyRegistry(self)
         self.stream_error = StreamError(self, self.proxy_registry)
         self.stanza_error = StanzaError(self, self.proxy_registry)
@@ -62,10 +76,16 @@ class Stream(object):
         self.jid = None
         self.use_tls = False
         self.node_name = None
-        self.connection_status = DISCONNECTED
+        self.username = None
+        self.password = None
+        self.lang = u'en-US'
+        self.ask_to_register = False
         
     def get_client(self):
         return self.client
+
+    def set_client(self, client):
+        self.client = client
 
     def set_auth(self, username, password):
         self.username = username
@@ -76,6 +96,9 @@ class Stream(object):
 
     def set_node_name(self, node_name):
         self.node_name = node_name
+
+    def set_default_lang(self, lang):
+        self.lang = lang
 
     def enable_tls(self):
         self.use_tls = True
@@ -104,11 +127,9 @@ class Stream(object):
     def register_on_bound(self, handler):
         self._on_bound = handler
                
-    def __trim_end_tag(self, element, omit_decl=False):
-        """
-        The stream element is sent opened. We trim the closing tag
-        manually.
-        """
+    def _trim_end_tag(self, element, omit_decl=False):
+        """The stream element is sent opened. We trim the closing tag
+        manually."""
         xmlstr = element.xml(indent=False, omit_declaration=omit_decl).strip()
         if xmlstr[-2:] == '/>':
             return '%s>' % xmlstr[:-2].rstrip()
@@ -129,11 +150,13 @@ class Stream(object):
 
         A(u'xmlns', value=XMPP_CLIENT_NS, parent=stream)
 
-        data = self.__trim_end_tag(stream, omit_decl)
+        data = self._trim_end_tag(stream, omit_decl)
         self.propagate(data=data)
 
     def _reset_stream_header(self, omit_decl=False):
         self.connection_status = CONNECTED
+        if callable(self._on_connected):
+            self._on_connected()
         parser = self.client.get_parser()
         parser.reset()
         self._send_stream_header(omit_decl)
@@ -155,34 +178,39 @@ class Stream(object):
         self._reset_stream_header(omit_decl=True)
 
     def _handle_mechanisms(self, e):
-        mechanisms = [m.xml_text for m in e.xml_children]
-        mechanism = None
-
-        # Always favour DIGEST-MD5 if supported by receiving entity
-        if u'DIGEST-MD5' in mechanisms:
-            mechanism = u'DIGEST-MD5'
-            token = None
-        elif u'PLAIN' in mechanisms:
-            mechanism = u'PLAIN'
-            email = '%s@%s' % (self.username, self.node_name)
-            token = generate_credential(email, self.username, self.password)
-        elif u'X-GOOGLE-TOKEN' in mechanisms:
-            mechanism = u'X-GOOGLE-TOKEN'
-            token = perform_authentication(self.username, self.password)
-        elif u'ANONYMOUS' in mechanisms:            
-            mechanism = u'ANONYMOUS'
-            token = None
+        # TODO: Change this
+        if self.ask_to_register:
+            iq = InBandRegistration.create_ibr_query(stanza_id=generate_unique())
+            self.propagate(element=iq)
         else:
-            # We don't support any of the proposed mechanism
-            # let's abort the SASL exchange
-            auth = E(u'abort', namespace=XMPP_SASL_NS)
+            mechanisms = [m.xml_text for m in e.xml_children if m.xml_name == 'mechanism']
+            mechanism = None
+
+            # Always favour DIGEST-MD5 if supported by receiving entity
+            if u'DIGEST-MD5' in mechanisms:
+                mechanism = u'DIGEST-MD5'
+                token = None
+            elif u'PLAIN' in mechanisms:
+                mechanism = u'PLAIN'
+                email = '%s@%s' % (self.username, self.node_name)
+                token = generate_credential(email, self.username, self.password)
+            elif u'X-GOOGLE-TOKEN' in mechanisms:
+                mechanism = u'X-GOOGLE-TOKEN'
+                token = perform_authentication(self.username, self.password)
+            elif u'ANONYMOUS' in mechanisms:            
+                mechanism = u'ANONYMOUS'
+                token = None
+            else:
+                # We don't support any of the proposed mechanism
+                # let's abort the SASL exchange
+                auth = E(u'abort', namespace=XMPP_SASL_NS)
+                self.propagate(element=auth)
+                return
+
+            auth = E(u'auth', content=token,
+                     attributes={u'mechanism': mechanism},
+                     namespace=XMPP_SASL_NS)
             self.propagate(element=auth)
-            return
-            
-        auth = E(u'auth', content=token,
-                 attributes={u'mechanism': mechanism},
-                 namespace=XMPP_SASL_NS)
-        self.propagate(element=auth)
         
     def _handle_challenge(self, e):
         response_token = None
@@ -199,6 +227,8 @@ class Stream(object):
 
     def _handle_authenticated(self, e):
         self.connection_status = AUTHENTICATED
+        if callable(self._on_authenticated):
+            self._on_authenticated()
         self._reset_stream_header()
 
     def _handle_binding(self, e):
@@ -224,34 +254,12 @@ class Stream(object):
         parser.unregister_on_element('jid', namespace=XMPP_BIND_NS)
         self.jid = JID.parse(e.xml_text)
         
-        iq = Roster.retrieve_roster_list(unicode(self.jid), stanza_id=generate_unique())
-        self.propagate(element=iq)
-        
         self.connection_status = BOUND
         
-        presence = Presence.create_presence() #to_jid=self.node_name)
-        iq = Iq.create_get_iq(to_jid=self.node_name, stanza_id=generate_unique())
-        query = E(u'query', namespace=XMPP_DISCO_ITEMS_NS, parent=iq)
-        data = presence.xml(indent=False, omit_declaration=True)
-        data = data + iq.xml(indent=False, omit_declaration=True)
-        self.propagate(data=data)
-
         if callable(self._on_bound):
             self._on_bound()
 
-    def _disco(self):
-        presence = E(u'presence', namespace=XMPP_CLIENT_NS)
-        data = presence.xml(omit_declaration=True)
-
-        iq = Disco.create_item_query(to_jid=self.node_name, stanza_id=generate_unique())
-        data = data + iq.xml(omit_declaration=True)
-
-        self.propagate(data=data)
-
-    def initiate(self):
-        """
-        Initiates the stream exchange with the remote component service
-        """
+    def register_dispatchers(self):
         parser = self.client.get_parser()
         parser.register_on_element('features', namespace=XMPP_STREAM_NS,
                                     dispatcher=self._handle_features)
@@ -265,6 +273,9 @@ class Stream(object):
                                     dispatcher=self._handle_session)
         parser.register_on_element('jid', namespace=XMPP_BIND_NS,
                                     dispatcher=self._handle_jid)
+
+    def initiate(self):
+        """Initiates the stream exchange with the remote component service."""
         self._send_stream_header()
 
     def propagate(self, data=None, element=None):
@@ -294,16 +305,218 @@ class Stream(object):
             self.propagate(element=presence)
             self.propagate('</stream:stream>')
             
-    def shutdown_stream_on_error(self, error):
+    def shutdown_stream_on_error(self, error=None):
         if self.client is not None:
-            self.propagate(element=error)
+            if error:
+                self.propagate(element=error)
             self.propagate('</stream:stream>')
             self.client.disconnect()
+
+    def handle_exception(self, exc, e):
+        print exc
+        if isinstance(exc, HeadstockInvalidStanzaError):
+            pass #print exc
+            
+
+#############################################
+# Stream interface used on the server side
+#############################################
+class ServerStream(Stream):
+    def __init__(self, handler):
+        Stream.__init__(self, client=handler)
+        self.handle_authentication_dispatcher = None
+        self.validate_authentication_dispatcher = None
+        self.disconnected = None
+        self.bound = None
+
+    def on_authentication_received(self, handler):
+        self.handle_authentication_dispatcher = handler
+
+    def on_validate_authentication(self, handler):
+        self.validate_authentication_dispatcher = handler
+
+    def on_disconnected(self, handler):
+        self.disconnected = handler
+
+    def on_bound(self, handler):
+        self.bound = handler
+
+    def register_pre_binding_dispatchers(self):
+        parser = self.client.get_parser()
+        # As long as the entitity is not bound we reject all stanzas with
+        # not-authorized element. Once the client is bound we will change the
+        # behavior
+        parser.register_on_element('query', namespace=ANY_NAMESPACE,
+                                   dispatcher=self._handle_not_authorized)
+        parser.register_on_element('query', namespace=XMPP_AUTH_NS,
+                                   dispatcher=self._handle_service_not_available)
+        parser.register_on_element('presence', namespace=ANY_NAMESPACE,
+                                   dispatcher=self._handle_not_authorized)
+        parser.register_on_element('message', namespace=ANY_NAMESPACE,
+                                   dispatcher=self._handle_not_authorized)
+
+        # Authentication dispatchers
+        parser.register_on_element('stream', namespace=XMPP_STREAM_NS,
+                                    dispatcher=self._handle_disconnect)
+        parser.register_on_element('auth', namespace=XMPP_SASL_NS,
+                                    dispatcher=self._handle_authentication)
+        parser.register_on_element('response', namespace=XMPP_SASL_NS,
+                                    dispatcher=self._validate_authentication)
+        parser.register_on_element('bind', namespace=XMPP_BIND_NS,
+                                    dispatcher=self._handle_binding)
+        parser.register_on_element('session', namespace=XMPP_SESSION_NS,
+                                    dispatcher=self._handle_session)
+
+    def register_post_binding_dispatchers(self):
+        parser = self.client.get_parser()
         
-    ############################################
-    # Dispatchers proxying
-    ############################################
-    
+        parser.unregister_on_element('presence', namespace=ANY_NAMESPACE)
+        parser.unregister_on_element('message', namespace=ANY_NAMESPACE)
+        parser.unregister_on_element('query', namespace=ANY_NAMESPACE)
+        
+        # This first line associates a default dispatcher for all "query" element
+        # that are not handled by a specific dispatcher.
+        # Automatically returns a feature-not-implemented element
+        parser.register_on_element('query', namespace=ANY_NAMESPACE,
+                                   dispatcher=self._handle_not_implemented)
+        
+    def _handle_not_authorized(self, e):
+        # see section 9.1.2 from RFC 3920
+        self.send_not_authorized_failure()
+        self.shutdown_stream_on_error()
+        
+    def _handle_service_not_available(self, e):
+        st = extract_from_stanza(e.xml_parent)
+        self.send_service_unavailable(e, st.from_jid)
+
+        if self.connection_status not in [AUTHENTICATED, BOUND, ACTIVE]:
+            self.shutdown_stream_on_error()
+        
+    def _handle_not_implemented(self, e):
+        st = extract_from_stanza(e.xml_parent)
+        self.send_feature_not_implemented(e, to_jid=st.from_jid, stanza_id=st.id)
+
+    def send_feature_not_implemented(self, service, to_jid=None, stanza_id=None):
+        if not stanza_id:
+            stanza_id = generate_unique()
+
+        iq = StanzaError.create_feature_not_implemented(from_jid=self.node_name, to_jid=to_jid,
+                                                        children=[service])
+        self.propagate(element=iq)
+        
+        
+    def send_stream_features(self, feat):
+        self.connection_status = CONNECTED
+        
+        attributes = {u'from': self.node_name, u'version': u'1.0', u'id': generate_unique()}
+        stream = E(u'stream', attributes=attributes,
+                   prefix=XMPP_STREAM_PREFIX, namespace=XMPP_STREAM_NS)
+
+        A(u'xmlns', value=XMPP_CLIENT_NS, parent=stream)
+        if self.lang:
+            A(u'lang', value=self.lang, prefix=XML_PREFIX,
+              namespace=XML_NS, parent=stream)
+            
+        stream.xml_children.append(feat)
+        
+        data = self._trim_end_tag(stream, False)
+        self.propagate(data=data)
+
+    def send_binding_features(self, feat):
+        attributes = {u'from': self.node_name, u'version': u'1.0', u'id': generate_unique()}
+        stream = E(u'stream', attributes=attributes,
+                   prefix=XMPP_STREAM_PREFIX, namespace=XMPP_STREAM_NS)
+
+        A(u'xmlns', value=XMPP_CLIENT_NS, parent=stream)
+        if self.lang:
+            A(u'lang', value=self.lang, prefix=XML_PREFIX,
+              namespace=XML_NS, parent=stream)
+            
+        stream.xml_children.append(feat)
+
+        data = self._trim_end_tag(stream, False)
+        self.propagate(data=data)
+
+    def send_authentication_failure(self):
+        fail = E(u'failure', namespace=XMPP_SASL_NS)
+        E(u'temporary-auth-failure', namespace=XMPP_SASL_NS, parent=fail)
+        self.propagate(element=fail)
+
+    def send_not_authorized_failure(self):
+        fail = E(u'failure', namespace=XMPP_SASL_NS)
+        E(u'not-authorized', namespace=XMPP_SASL_NS, parent=fail)
+        self.propagate(element=fail)
+
+    def send_service_unavailable(self, service, to_jid=None):
+        iq = StanzaError.create_service_unavailable(from_jid=self.node_name,
+                                                    to_jid=to_jid, children=[service])
+        self.propagate(element=iq)
+
+    def send_authentication_success(self):
+        self.propagate(element=E(u'success', namespace=XMPP_SASL_NS))
+
+    def send_challenge(self, challenge):
+        self.propagate(element=E(u'challenge', content=challenge, namespace=XMPP_SASL_NS))
+
+    def __set_authenticated(self):
+        self.connection_status = AUTHENTICATED
+        
+    def _handle_authentication(self, e):
+        mechanism = e.get_attribute('mechanism')
+        mechanism = unicode(mechanism)
+
+        if self.handle_authentication_dispatcher(mechanism, e.xml_text) is True:
+            self.__set_authenticated()
+        
+    def _validate_authentication(self, e):
+        if e.xml_text:
+            if self.validate_authentication_dispatcher(e.xml_text) is True:
+                self.__set_authenticated()
+        else:
+            if self.connection_status == AUTHENTICATED:
+                self.send_authentication_success()
+
+    def _handle_binding(self, e):
+        # If the client wishes to allow the server to generate
+        # the resource identifier on its behalf, it sends an
+        # IQ stanza of type "set" that contains an empty <bind/> element.
+        resource = e.get_child('resource', XMPP_BIND_NS)
+        if resource:
+            self.set_resource_name(resource.xml_text)
+        else:
+            self.set_resource_name(generate_unique(self.username))
+
+        self.jid = JID(self.username, self.node_name, self.resource_name)
+        
+        self.connection_status = BOUND
+
+        if callable(self.bound):
+            self.bound()
+            
+        st = extract_from_stanza(e.xml_parent)
+        iq = Iq.create_result_iq(stanza_id=st.id)
+        bind = E(u'bind', namespace=XMPP_BIND_NS, parent=iq)
+        E(u'jid', content=unicode(self.jid), namespace=XMPP_BIND_NS, parent=bind)
+        self.propagate(element=iq)
+
+    def _handle_session(self, e):
+        st = extract_from_stanza(e.xml_parent)
+        iq = Iq.create_result_iq(stanza_id=st.id)
+        E(u'session', namespace=XMPP_SESSION_NS, parent=iq)
+        self.propagate(element=iq)
+        
+    def _handle_disconnect(self, e):
+        if callable(self.disconnected):
+            self.disconnected()
+
+    def send_invalid_mechanism(self):
+        failure = SaslError.create_invalid_mechanism()
+        self.propagate(element=failure)
+        
+            
+#############################################
+# Stream error interface
+#############################################
 class StreamError(Entity):
     def __init__(self, stream, proxy_registry=None):
         Entity.__init__(self, stream, proxy_registry)
@@ -474,3 +687,9 @@ class SaslError(Entity):
     def register_not_temporary_auth_failure(self, handler):
         self.proxy_registry.add_dispatcher('sasl.error.temporary_auth_failure', handler)
         
+
+    def create_invalid_mechanism(cls):
+        failure = E(u'failure', namespace=XMPP_SASL_NS)
+        E(u'invalid-mechanism', namespace=XMPP_SASL_NS, parent=failure)
+        return failure
+    create_invalid_mechanism = classmethod(create_invalid_mechanism)

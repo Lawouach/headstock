@@ -1,14 +1,24 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import sys
+import socket
+import time
+import thread
+import threading
+import select
+import Queue
+import errno
+
 from Kamaelia.Internet.TCPClient import TCPClient
 from Axon.ThreadedComponent import threadedcomponent
+from Axon.Component import component
 from Kamaelia.IPC import newReader, newWriter
 
 __all__ = ['KamaeliaClient']
 
 
-class KamaeliaClient(threadedcomponent):
+class KamaeliaClient(component):
     Inboxes = { "inbox" : "Default inbox",
                 "fromTCPClient" : "Data received from the TCP client",
                 "control" : "NOT USED", }
@@ -28,6 +38,7 @@ class KamaeliaClient(threadedcomponent):
         self.client = None
         self.incoming_cb = None
         self.keep_running = True
+        self.lock = threading.Lock()
         self.certificate = certificate 
         self.certificate_key = certificate_key
         self.certificate_password_cb = certificate_password_cb
@@ -84,7 +95,10 @@ class KamaeliaClient(threadedcomponent):
             if self.dataReady("fromTCPClient"):
                 data = self.recv("fromTCPClient")
                 print "<- ", data
+                #self.send(data, "outbox")
                 self._parser.feed(data)
         
-            if not self.client.anyReady():
+            if not self.anyReady():
                 self.pause()
+
+            yield 1

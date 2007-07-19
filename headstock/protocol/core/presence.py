@@ -56,7 +56,8 @@ class Presence(Entity):
     ############################################
     def create_presence(cls, from_jid=None, to_jid=None, presence_type=None,
                         status=None, show=None):
-        stanza = Stanza.create(u'presence', from_jid, to_jid, presence_type)
+        stanza = Stanza(u'presence', from_jid=from_jid,to_jid= to_jid,
+                        type=presence_type).to_element()
         if status:
             E(u'status', content=status, namespace=stanza.xml_ns, parent=stanza)
         if show:

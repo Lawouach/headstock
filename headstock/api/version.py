@@ -26,22 +26,28 @@ class VersionManager(object):
         self.session = session
         self.version_info = None
         self.version_info_received = None
+        self.version_info_requested = None
 
     def on_received(self, handler):
         self.version_info_received = handler
+
+    def on_requested(self, handler):
+        self.version_info_requested = handler
 
     def set(self, info):
         self.version_info = info
 
     def requested(self, version, e):
         if self.version_info:
+            iq_id = e.xml_parent.get_attribute('id')
+            if not iq_id: iq_id = generate_unique()
             self.send(unicode(e.xml_parent.get_attribute('from')),
-                      self.version_info)
+                      self.version_info, stanza_id=unicode(iq_id))
 
-    def send(self, to_jid, info):
+    def send(self, to_jid, info, stanza_id=None):
         iq = Version.create_version_response(unicode(self.session.stream.jid),
                                              to_jid, info.name, info.version, info.os,
-                                             stanza_id=generate_unique())
+                                             stanza_id=stanza_id)
         self.session.stream.propagate(element=iq)
         
     def received(self, version, e):

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from headstock.lib.network.kamaeliaclient import KamaeliaClient
+from headstock.lib.network.client import ThreadedClient
 from headstock.protocol.core.stream import Stream
 from headstock.protocol.core.message import Message
 from headstock.api.session import Session
@@ -11,7 +11,7 @@ from headstock.api.version import VersionInfo
 from bridge import Element as E
 from bridge.common import XMPP_DISCO_INFO_NS, XMPP_DISCO_ITEMS_NS, \
      XMPP_OOB_NS, XMPP_SI_NS, XMPP_SI_FILE_TRANSFER_NS, XMPP_BYTESTREAMS_NS
-from bridge.parser import DispatchParser
+from bridge.parser.incremental import create_parser
 
 import time, sys, Queue
 
@@ -21,9 +21,10 @@ def cert_passphrase():
 class Demo:
     def __init__(self):
         self.keep_alive = True
-        self.c = KamaeliaClient('localhost', 5222)
-        parser = DispatchParser()
+        self.c = ThreadedClient('localhost', 5222)
+        parser, handler, output = create_parser()
         self.c.set_parser(parser)
+        self.c.set_handler(handler)
 
         self.s = Stream(self.c)
         self.s.initialize_all()
@@ -32,18 +33,23 @@ class Demo:
         self.sess.initialize_dispatchers()
         
     def loop(self):
-        from Axon.Scheduler import scheduler
-        self.c.activate()
-        scheduler.run.runThreads(slowmo=0.01)
-
-        print "running"
+        client = self.c
+        parser = client.get_parser()
+        while self.keep_alive:
+            try:
+                data = client.incoming.get(timeout=0.01)
+                parser.feed(data)
+            except Queue.Empty:
+                pass
 
     def stop(self):
         if self.c.connected:
             self.s.terminate()
             self.c.disconnect()
+            self.c.join()
+            self.keep_alive = False
             self.s = self.c = None
-
+            
     def version_info_received(self, info):
         print info
         
@@ -52,7 +58,9 @@ class Demo:
    
         for jid in self.sess.contacts.contacts:
             contact = self.sess.contacts.contacts[jid]
-            if contact.availability:
+            if contact.subscription == 'from':
+                contact.subscribe()
+            elif contact.availability:
                 #contact.ichat(u'hello', lang=u'en-GB')
                 #contact.ichat(u'\xe9', lang=u'fr-FR')
                 #contact.isuggest_resource_at(Body(u'check this'),
@@ -60,7 +68,7 @@ class Demo:
                 #                               desc=u'nice pix')
                 
                 contact.ask_last_seen()
-                #contact.resource_at(u'http://www.defuze.org/oss/misc/sylvain.jpg')
+                contact.resource_at(u'http://www.defuze.org/oss/misc/sylvain.jpg')
 
     def info_requested(self, from_jid):
         d = Discovery()
@@ -90,28 +98,16 @@ class Demo:
             self.sess.discovery.ask_items(u'pubsub.localhost', node_name=sub.node)
 
     def doit(self):
-        #self.sess.discovery.ask_information(u'test3@localhost/ubuntu')
-        #self.sess.discovery.ask_items(u'test3@localhost/ubuntu')
-        #self.sess.version.ask(u'test3@localhost/ubuntu')
-        #self.sess.discovery.ask_items(u'pubsub.localhost')
-        #self.sess.discovery.ask_items(u'pubsub.localhost', node_name=u'/muse')
-        #self.sess.discovery.ask_information(u'pubsub.localhost')
-        #self.sess.pubsub.check_configure_support(u'pubsub.localhost', node_name=u'mooh')
-        #self.sess.pubsub.subscribe(u'pubsub.localhost', node_name=u'/yeah')
-        #self.sess.pubsub.create_node_whitelist(u'pubsub.localhost', node_name=u'yeah')
-        #self.sess.pubsub.delete_node(u'pubsub.localhost', node_name=u'/yeah')
-        #self.sess.pubsub.purge_items(u'pubsub.localhost', node_name=u'/muse')
-        #payload = E.load('<test />').xml_root
-        #self.sess.pubsub.publish(u'pubsub.localhost', node_name=u'/muse', payload=payload)
-        pass
-    
+        self.sess.version.ask(u'test3@localhost/headstock')
+        self.sess.contacts.ask_contacts()
+        
     def got_error(self, err):
         print err
 
     def run(self):
-        self.c.certificate = file('./server.crt', 'r').read()
-        self.c.certificate_key = file('./server.key', 'r').read()
-        self.c.certificate_password_cb = cert_passphrase
+        #self.c.certificate = file('./server.crt', 'r').read()
+        #self.c.certificate_key = file('./server.key', 'r').read()
+        #self.c.certificate_password_cb = cert_passphrase
 
         self.sess.error.on_received(self.got_error)
         self.sess.contacts.on_update(self.say_hello)
@@ -120,17 +116,19 @@ class Demo:
         self.sess.pubsub.on_subscriptions_update(self.pubsub_subscriptions)
         self.sess.version.set(VersionInfo(u'headstock', u'0.1.0', u'Linux'))
         self.sess.version.on_received(self.version_info_received)
+            
         self.s.register_on_bound(self.doit)
         self.s.set_node_name(u'localhost')
-        self.s.set_auth(u'sylvain', u'test')
-        self.s.set_resource_name(u'Home')
-        self.s.enable_tls()
+        self.s.set_auth(u'test', u'test')
+        self.s.set_resource_name(u'localhost')
         self.c.connect()
+        self.c.start()
         self.s.initiate()
         self.loop()
 
 if __name__ == '__main__':
     demo = Demo()
+    demo.run()
     try:
         demo.run()
     except KeyboardInterrupt:

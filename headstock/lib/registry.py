@@ -1,12 +1,18 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from headstock.lib.utils import extract_from_stanza
+
 __all__ = ['ProxyRegistry']
 
 class ProxyRegistry(object):
     def __init__(self, stream):
         self.stream = stream
         self._dispatchers = {}
+        self.logger = None
+        
+    def set_logger(self, logger):
+        self.logger = logger
         
     def register(self, name, proxy_dispatcher, namespace=None):
         client = self.stream.get_client()
@@ -27,5 +33,7 @@ class ProxyRegistry(object):
 
     def dispatch(self, name, caller, e):
         if name in self._dispatchers:
+            if self.logger:
+                self.logger.debug("REGISTRY: %s %r" % (name, repr(self._dispatchers[name])))
+            caller.stanza = extract_from_stanza(e)
             self._dispatchers[name](caller, e)
-        

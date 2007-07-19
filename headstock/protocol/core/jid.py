@@ -49,4 +49,4 @@ class JID(object):
         if self.node and self.domain and self.resource:
             return "%s@%s/%s" % (self.node, self.domain, self.resource)
         return self.domain
-        
+      

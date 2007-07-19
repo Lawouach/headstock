@@ -16,6 +16,11 @@ class Data(object):
 
     def __repr__(self):
         return '<Data "%s" at %s>' % (self.type, hex(id(self)))
+
+    def field_by_var(self, var):
+        for field in self.fields:
+            if field.var == var:
+                return field
     
     def from_element(cls, e):
         d = Data(unicode(e.get_attribute('type')))
@@ -42,14 +47,14 @@ class Data(object):
     to_element = classmethod(to_element)
                    
 class Field(object):
-    def __init__(self, required=False, field_type=u'text-single', var=None):
+    def __init__(self, required=False, field_type=u'text-single', var=None, values=None):
         self.required = required
         self.type = field_type
         self.var = var
         self.label = None
         self.desc = None
         self.options = []
-        self.values = []
+        self.values = values or []
         
     def __repr__(self):
         return '<Field "%s" (%s) at %s>' % (self.type or '', self.var or '', hex(id(self)))
@@ -57,8 +62,11 @@ class Field(object):
     def from_element(cls, e):
         f = Field()
         f.type = e.get_attribute('type')
+        if f.type: f.type = unicode(f.type)
         f.var = e.get_attribute('var')
+        if f.var: f.var = unicode(f.var)
         f.label = e.get_attribute('label')
+        if f.label: f.label = unicode(f.label)
         required = e.get_child('required')
         if required and required == 'true':
             f.required = True

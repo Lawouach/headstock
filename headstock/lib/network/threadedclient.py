@@ -31,12 +31,16 @@ class ThreadedClient(threading.Thread):
         self.certificate = certificate 
         self.certificate_key = certificate_key
         self.certificate_password_cb = certificate_password_cb
+        self.logger = None
         
     def set_parser(self, parser):
         self._parser = parser
 
     def get_parser(self):
         return self._parser
+
+    def set_logger(self, logger):
+        self.logger = logger
 
     def start_tls(self):
         from tlslite.api import X509, X509CertChain, parsePEMKey, TLSConnection
@@ -50,6 +54,7 @@ class ThreadedClient(threading.Thread):
                                      passwordCallback=self.certificate_password_cb)
 
             connection = TLSConnection(self.sock)
+            connection.ignoreAbruptClose = True
             setattr(connection, 'fileno', connection.sock.fileno)
             connection.handshakeClientCert(certChain, privateKey)
             self.conn = connection
@@ -87,7 +92,8 @@ class ThreadedClient(threading.Thread):
         self.connected = False
         
     def propagate(self, data, size=4096):
-        print "-> ", data
+        if self.logger:
+            self.logger.debug("OUTGOING: %s", data)
         self.conn.send(data)
     
     def run(self):
@@ -104,7 +110,8 @@ class ThreadedClient(threading.Thread):
                 self.lock.release()
 
             if data:
-                print "<- ", data
+                if self.logger:
+                    self.logger.debug("INCOMING: %s", data)
                 if self.incoming:
                     self.incoming.put(data)
                 if self.incoming_cb:

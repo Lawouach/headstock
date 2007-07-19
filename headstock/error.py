@@ -4,7 +4,8 @@
 from bridge.filter.xmpp import lookup_first_error
 
 __all__ = ['Error', 'HeadstockError', 'HeadstockInvalidError',
-           'HeadstockStreamError', 'HeadstockAuthenticationFailure']
+           'HeadstockStreamError', 'HeadstockAuthenticationFailure',
+           'HeadstockInvalidStanzaError']
 
 class Error(object):
     _error_mapping = {'failure': 'failure', 'conflict': 'conflict'}
@@ -30,4 +31,7 @@ class HeadstockStreamError(HeadstockError):
     pass
 
 class HeadstockAuthenticationFailure(HeadstockError):
+    pass
+
+class HeadstockInvalidStanzaError(HeadstockError):
     pass

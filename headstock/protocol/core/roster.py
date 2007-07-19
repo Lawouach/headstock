@@ -7,11 +7,11 @@ from headstock.protocol.core.iq import Iq
 from headstock.lib.utils import generate_unique
 
 #####################################################################################
-# From RFC 3921
-# In XMPP, one's contact list is called a roster, which consists of any number of
+# From RFC 3921
+# In XMPP, one's contact list is called a roster, which consists of any number of
 # specific roster items, each roster item being identified by a unique JID.
-# A user's roster is stored by the user's server on the user's behalf so that
-# the user may access roster information from any resource.
+# A user's roster is stored by the user's server on the user's behalf so that
+# the user may access roster information from any resource.
 #####################################################################################
 
 from bridge import Element as E
@@ -58,6 +58,9 @@ class Roster(Entity):
     def register_on_list(self, handler):
         self.proxy_registry.add_dispatcher('roster.result', handler)
         
+    def register_on_get(self, handler):
+        self.proxy_registry.add_dispatcher('roster.get', handler)
+        
     def register_on_set(self, handler):
         self.proxy_registry.add_dispatcher('roster.set', handler)
 
@@ -90,10 +93,15 @@ class Roster(Entity):
         return iq
     create_set_roster = classmethod(create_set_roster)
 
-    def create_result_roster(cls, stanza_id=None):
-        iq = Iq.create_result_iq(stanza_id=stanza_id)
+    def create_result_roster(cls, from_jid=None, to_jid=None, stanza_id=None, items=None):
+        iq = Iq.create_result_iq(from_jid=from_jid, to_jid=to_jid, stanza_id=stanza_id)
         query = E(u'query', namespace=XMPP_ROSTER_NS, parent=iq)
+        if items:
+            for item in items:
+                item.xml_parent = query
+                query.xml_children.append(item)
         return iq
+    create_result_roster = classmethod(create_result_roster)
 
     def create_item(cls, jid, name=None, subscription=None, ask=False, groups=None):
         attributes = {u'jid': jid}

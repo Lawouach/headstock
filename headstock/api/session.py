@@ -1,66 +1,73 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from headstock.api.contact import ContactList
+from headstock.api.contact import Roster, RosterServer
 from headstock.api.discovery import DiscoveryManager
 from headstock.api.si import FileTransferManager
 from headstock.api.version import VersionManager
 from headstock.api.error import ErrorManager
 from headstock.api.pubsub import PubSub
+from headstock.api.registration import Registration
+from headstock.api.privacylist import PrivacyListManager
+from headstock.api.rpc import Rpc
+from headstock.lib.utils import generate_unique
+from headstock.protocol.core.iq import Iq
+
+__all__ = ['Session', 'ServerSession']
 
 class Session(object):
     def __init__(self, stream):
         self.stream = stream
+        self.storage = None
+        
         self.jid = None
         self.error = ErrorManager(self)
-        self.contacts = ContactList(self)
+        self.contacts = Roster(self)
         self.discovery = DiscoveryManager(self)
         self.files = FileTransferManager(self)
         self.version = VersionManager(self)
         self.pubsub = PubSub(self)
+        self.registration = Registration(self)
+        self.privacy_list = PrivacyListManager(self)
+        self.rpc = Rpc(self)
+
+    def set_storage(self, storage):
+        self.storage = storage
 
     def initialize_dispatchers(self):
-        error = self.stream.stanza_error
-        error.register_default_dispatcher(self.error.received)
-                                             
-        error = self.stream.stream_error
-        error.register_default_dispatcher(self.error.received)
-
-        error = self.stream.sasl_error
-        error.register_default_dispatcher(self.error.received)
+        pass
         
-        presence = self.stream.presence
-        presence.register_online(self.contacts.online)
-        presence.register_unavailable(self.contacts.unavailable)
-        presence.register_subscribe(self.contacts.subscription_requested)
-        presence.register_subscribed(self.contacts.subscription_allowed)
-        presence.register_unsubscribe(self.contacts.unsubscription_requested)
-        presence.register_unsubscribed(self.contacts.subscription_cancelled)
+class ServerSession(Session):
+    def __init__(self, stream):
+        Session.__init__(self, stream)
+        self.contacts = RosterServer(self)
+        self.features = []
 
-        roster = self.stream.roster
-        roster.register_on_list(self.contacts.contacts_retrieved)
-        roster.register_on_set(self.contacts.contacts_updated)
-        roster.register_on_vcard_request(self.contacts.vcard_requested)
-
-        disco = self.stream.discovery
-        disco.register_on_list(self.discovery.discovery_retrieved)
-        disco.register_on_get(self.discovery.discovery_request)
-
-        si = self.stream.si
-        si.register_on_file_transfer(self.files.requested)
-
-        version = self.stream.version
-        version.register_requested(self.version.requested)
-        version.register_received(self.version.received)
-
-        pubsub = self.stream.pubsub
-        pubsub.register_on_received_subscriptions(self.pubsub.subscriptions_received)
+    def initialize_dispatchers(self):
+        pass
+    
+    def transmit(self, obj, e):
+        if obj.stanza.kind == 'iq':
+            # First we check that that Iq stanza is valid in respect
+            # of section 9 of RFC 3920
+            try:
+                validate_iq_stanza(e)
+            except HeadstockInvalidStanzaError, exc:
+                err = Error(u'modify', u'bad-request', u'400',
+                            text=exc.message.decode(ENCODING), foreign=e)
+                self.sess.error.send_as_iq(unicode(self.stream.jid), error=err,
+                                           stanza_id=obj.stanza.id)
+                return
         
-    def offline(self):
-        presence = self.stream.presence.offline(self.jid)
-        self.stream.propagate(element=presence)
-        
-    def online(self):
-        presence = self.stream.presence.online(self.jid)
-        self.stream.propagate(element=presence)
-        
+        # If the recipient is not connected then we let the
+        # sender know about it
+        if obj.stanza.to_jid and not self.handler.server.is_bound(obj.stanza.to_jid):
+            err = Error(u'wait', u'recipient-unavailable', u'404', foreign=e)
+            self.sess.error.send_as_iq(unicode(self.stream.jid), error=err,
+                                       stanza_id=obj.stanza.id)
+            return
+
+        # If everything was ok we transmit the Iq stanza to the
+        # recipient
+        self.stream.propagate(element=stanza)
+

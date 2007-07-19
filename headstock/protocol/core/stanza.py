@@ -13,28 +13,43 @@ from headstock.protocol.core import Entity
 from bridge import Element as E
 from bridge import Attribute as A
 from bridge.common import XMPP_CLIENT_NS, XMPP_PUBSUB_NS, \
-     XMPP_STANZA_ERROR_NS, XML_NS
+     XMPP_STANZA_ERROR_NS, XML_NS, XML_PREFIX
 
 __all__ = ['Stanza', 'StanzaError']
 
 class Stanza(object):
-    def create(cls, node_name, from_jid=None, to_jid=None,
-               stanza_type=None, stanza_id=None, parent=None):
+    def __init__(self, kind=None, from_jid=None, to_jid=None,
+                 type=None, id=None, lang=None):
+        self.kind = kind
+        self.type = type
+        self.to_jid = to_jid
+        self.from_jid = from_jid
+        self.id = id
+        self.lang = lang
+        self.children = []
+
+    def __repr__(self):
+        return '<Stanza "%s" type="%s" from="%s" to="%s" id="%s" at %s>' % (self.kind, self.type, self.from_jid,
+                                                                            self.to_jid, self.id, hex(id(self)))
+        
+    def to_element(self, parent=None):
         attributes = {}
-        if stanza_type:
-            attributes = {u'type': stanza_type}
-        stanza = E(node_name, attributes=attributes, parent=parent)
-        if from_jid:
-            A(u'from', value=unicode(from_jid), parent=stanza)
-        if to_jid:
-            A(u'to', value=unicode(to_jid), parent=stanza)
-        if stanza_id:
-            A(u'id', value=stanza_id, parent=stanza)
+        if self.type:
+            attributes = {u'type': self.type}
+        stanza = E(self.kind, attributes=attributes, parent=parent)
+        if self.from_jid:
+            A(u'from', value=self.from_jid, parent=stanza)
+        if self.to_jid:
+            A(u'to', value=self.to_jid, parent=stanza)
+        if self.id:
+            A(u'id', value=self.id, parent=stanza)
+        if self.lang:
+            A(u'lang', value=self.lang, prefix=XML_PREFIX,
+              namespace=XML_NS, parent=stanza)
 
         stanza.update_prefix(None, None, XMPP_CLIENT_NS, False)
             
         return stanza
-    create = classmethod(create)
 
 class StanzaError(Entity):
     def __init__(self, stream, proxy_registry=None):
@@ -136,12 +151,68 @@ class StanzaError(Entity):
     ############################################
     # Class API
     ############################################
-    def _create_error(cls, condition, type, legacy=None, text=None, lang=None, parent=None):
+    def create_as_iq(cls, from_jid, to_jid, condition, type, legacy=None,
+                     text=None, lang=None, stanza_id=None, children=None):
+        if not stanza_id:
+            from headstock.lib.utils import generate_unique
+            stanza_id = generate_unique()
+
+        from headstock.protocol.core.iq import Iq
+        iq = Iq.create_error_iq(from_jid=from_jid, to_jid=to_jid, stanza_id=stanza_id)
+        
+        children = children or []
+        iq.xml_children.extend(children)
+
+        cls._create_error(iq, condition=condition, type=type,
+                          legacy=legacy, text=text, lang=lang)
+
+        return iq
+    create_as_iq = classmethod(create_as_iq)
+    
+    def create_as_presence(cls, from_jid, to_jid, condition, type, legacy=None,
+                           text=None, lang=None, stanza_id=None, children=None):
+        if not stanza_id:
+            from headstock.lib.utils import generate_unique
+            stanza_id = generate_unique()
+
+        from headstock.protocol.core.iq import Iq
+        iq = Stanza(u'presence', from_jid=from_jid, to_jid=to_jid,
+                    stanza_id=stanza_id).to_element()
+        
+        children = children or []
+        iq.xml_children.extend(children)
+
+        cls._create_error(iq, condition=condition, type=type,
+                          legacy=legacy, text=text, lang=lang)
+
+        return iq
+    create_as_presence = classmethod(create_as_presence)
+    
+    def create_as_message(cls, from_jid, to_jid, condition, type, legacy=None,
+                          text=None, lang=None, stanza_id=None, children=None):
+        if not stanza_id:
+            from headstock.lib.utils import generate_unique
+            stanza_id = generate_unique()
+
+        from headstock.protocol.core.iq import Iq
+        iq = Stanza(u'message', from_jid=from_jid, to_jid=to_jid,
+                    stanza_id=stanza_id).to_element()
+        
+        children = children or []
+        iq.xml_children.extend(children)
+
+        cls._create_error(iq, condition=condition, type=type,
+                          legacy=legacy, text=text, lang=lang)
+
+        return iq
+    create_as_message = classmethod(create_as_message)
+    
+    def _create_error(cls, stanza, condition, type, legacy=None, text=None, lang=None):
         attrs = {u'type': type}
         if legacy:
             attrs[u'code'] = legacy
         error = E(u'error', attributes=attrs,
-                  namespace=XMPP_CLIENT_NS, parent=parent)
+                  namespace=XMPP_CLIENT_NS, parent=stanza)
         E(condition, namespace=XMPP_STANZA_ERROR_NS,
           parent=error)
         if text:
@@ -149,118 +220,137 @@ class StanzaError(Entity):
                      namespace=XMPP_STANZA_ERROR_NS)
             if lang:
                 A(u'lang', value=lang, namespace=XML_NS, parent=text)
-
-        return error
     _create_error = classmethod(_create_error)
 
     @classmethod
-    def create_bad_request(cls, text=None, lang=None, parent=None):
-        return StanzaError._create_error(u'bad-request', u'modify', u'400',
-                                         text, lang, parent)
+    def create_bad_request(cls, from_jid=None, to_jid=None, stanza_id=None,
+                           children=None, text=None, lang=None):
+        return StanzaError.create_as_iq(from_jid, to_jid, u'bad-request', u'modify', u'400',
+                                        stanza_id=stanza_id, text=text, lang=lang, children=children)
 
     @classmethod
-    def create_conflict(cls, text=None, lang=None, parent=None):
-        return StanzaError._create_error(u'conflict', u'cancel', u'409',
-                                         text, lang, parent)
+    def create_conflict(cls, from_jid=None, to_jid=None, stanza_id=None,
+                        children=None, text=None, lang=None):
+        return StanzaError.create_as_iq(from_jid, to_jid, u'conflict', u'cancel', u'409',
+                                         stanza_id=stanza_id, text=text, lang=lang, children=children)
 
     @classmethod
-    def create_feature_not_implemented(cls, text=None, lang=None, parent=None):
-        return StanzaError._create_error(u'feature-not-implemented',
+    def create_feature_not_implemented(cls, from_jid=None, to_jid=None, stanza_id=None,
+                                       children=None, text=None, lang=None):
+        return StanzaError.create_as_iq(from_jid, to_jid, u'feature-not-implemented',
                                          u'cancel', u'501',
-                                         text, lang, parent)
+                                         stanza_id=stanza_id, text=text, lang=lang, children=children)
 
     @classmethod
-    def create_forbidden(cls, text=None, lang=None, parent=None):
-        return StanzaError._create_error(u'forbidden', u'auth', u'403',
-                                         text, lang, parent)
+    def create_forbidden(cls, from_jid=None, to_jid=None, stanza_id=None,
+                         children=None, text=None, lang=None):
+        return StanzaError.create_as_iq(from_jid, to_jid, u'forbidden', u'auth', u'403',
+                                         stanza_id=stanza_id, text=text, lang=lang, children=children)
 
     @classmethod
-    def create_gone(cls, text=None, lang=None, parent=None):
-        return StanzaError._create_error(u'gone', u'modify', u'302',
-                                         text, lang, parent)
+    def create_gone(cls, from_jid=None, to_jid=None, stanza_id=None,
+                    children=None, text=None, lang=None):
+        return StanzaError.create_as_iq(from_jid, to_jid, u'gone', u'modify', u'302',
+                                         stanza_id=stanza_id, text=text, lang=lang, children=children)
 
     @classmethod
-    def create_internal_server_error(cls, text=None, lang=None, parent=None):
-        return StanzaError._create_error(u'internal-server-error', u'wait', u'500',
-                                         text, lang, parent)
+    def create_internal_server_error(cls, from_jid=None, to_jid=None, stanza_id=None,
+                                     children=None, text=None, lang=None):
+        return StanzaError.create_as_iq(from_jid, to_jid, u'internal-server-error', u'wait', u'500',
+                                         stanza_id=stanza_id, text=text, lang=lang, children=children)
 
     @classmethod
-    def create_item_not_found(cls, text=None, lang=None, parent=None):
-        return StanzaError._create_error(u'item-not-found', u'cancel', u'404',
-                                         text, lang, parent)
+    def create_item_not_found(cls, from_jid=None, to_jid=None, stanza_id=None,
+                              children=None, text=None, lang=None):
+        return StanzaError.create_as_iq(from_jid, to_jid, u'item-not-found', u'cancel', u'404',
+                                         stanza_id=stanza_id, text=text, lang=lang, children=children)
 
     @classmethod
-    def create_jid_malformed(cls, text=None, lang=None, parent=None):
-        return StanzaError._create_error(u'jid-malformed', u'cancel', u'400',
-                                         text, lang, parent)
+    def create_jid_malformed(cls, from_jid=None, to_jid=None, stanza_id=None,
+                             children=None, text=None, lang=None):
+        return StanzaError.create_as_iq(from_jid, to_jid, u'jid-malformed', u'cancel', u'400',
+                                         stanza_id=stanza_id, text=text, lang=lang, children=children)
 
     @classmethod
-    def create_not_acceptable(cls, text=None, lang=None, parent=None):
-        return StanzaError._create_error(u'not-acceptable', u'modify', u'406',
-                                         text, lang, parent)
+    def create_not_acceptable(cls, from_jid=None, to_jid=None, stanza_id=None,
+                              children=None, text=None, lang=None):
+        return StanzaError.create_as_iq(from_jid, to_jid, u'not-acceptable', u'modify', u'406',
+                                         stanza_id=stanza_id, text=text, lang=lang, children=children)
 
     @classmethod
-    def create_not_allowed(cls, text=None, lang=None, parent=None):
-        return StanzaError._create_error(u'not-allowed', u'modify', u'405',
-                                         text, lang, parent)
+    def create_not_allowed(cls, from_jid=None, to_jid=None, stanza_id=None,
+                           children=None, text=None, lang=None):
+        return StanzaError.create_as_iq(from_jid, to_jid, u'not-allowed', u'modify', u'405',
+                                         stanza_id=stanza_id, text=text, lang=lang, children=children)
 
     @classmethod
-    def create_not_authorized(cls, text=None, lang=None, parent=None):
-        return StanzaError._create_error(u'not-authorized', u'auth', u'401',
-                                         text, lang, parent)
+    def create_not_authorized(cls, from_jid=None, to_jid=None, stanza_id=None,
+                              children=None, text=None, lang=None):
+        return StanzaError.create_as_iq(from_jid, to_jid, u'not-authorized', u'auth', u'401',
+                                         stanza_id=stanza_id, text=text, lang=lang, children=children)
 
     @classmethod
-    def create_payment_required(cls, text=None, lang=None, parent=None):
-        return StanzaError._create_error(u'payment-required', u'auth', u'402',
-                                         text, lang, parent)
+    def create_payment_required(cls, from_jid=None, to_jid=None, stanza_id=None,
+                                children=None, text=None, lang=None):
+        return StanzaError.create_as_iq(from_jid, to_jid, u'payment-required', u'auth', u'402',
+                                         stanza_id=stanza_id, text=text, lang=lang, children=children)
     
     @classmethod
-    def create_recipient_unavailable(cls, text=None, lang=None, parent=None):
-        return StanzaError._create_error(u'recipient-unavailable', u'wait', u'404',
-                                         text, lang, parent)
+    def create_recipient_unavailable(cls, from_jid=None, to_jid=None, stanza_id=None,
+                                     children=None, text=None, lang=None):
+        return StanzaError.create_as_iq(from_jid, to_jid, u'recipient-unavailable', u'wait', u'404',
+                                         stanza_id=stanza_id, text=text, lang=lang, children=children)
     
     @classmethod
-    def create_redirect(cls, text=None, lang=None, parent=None):
-        return StanzaError._create_error(u'redirect', u'modify', u'302',
-                                         text, lang, parent)
+    def create_redirect(cls, from_jid=None, to_jid=None, stanza_id=None,
+                        children=None, text=None, lang=None):
+        return StanzaError.create_as_iq(from_jid, to_jid, u'redirect', u'modify', u'302',
+                                         stanza_id=stanza_id, text=text, lang=lang, children=children)
     
     @classmethod
-    def create_registration_required(cls, text=None, lang=None, parent=None):
-        return StanzaError._create_error(u'registration-required', u'auth', u'407',
-                                         text, lang, parent)
+    def create_registration_required(cls, from_jid=None, to_jid=None, stanza_id=None,
+                                     children=None, text=None, lang=None):
+        return StanzaError.create_as_iq(from_jid, to_jid, u'registration-required', u'auth', u'407',
+                                         stanza_id=stanza_id, text=text, lang=lang, children=children)
     
     @classmethod
-    def create_remote_server_not_found(cls, text=None, lang=None, parent=None):
-        return StanzaError._create_error(u'remote-server-not-found', u'cancel', u'404',
-                                         text, lang, parent)
+    def create_remote_server_not_found(cls, from_jid=None, to_jid=None, stanza_id=None,
+                                       children=None, text=None, lang=None):
+        return StanzaError.create_as_iq(from_jid, to_jid, u'remote-server-not-found', u'cancel', u'404',
+                                         stanza_id=stanza_id, text=text, lang=lang, children=children)
     
     @classmethod
-    def create_remote_server_timeout(cls, text=None, lang=None, parent=None):
-        return StanzaError._create_error(u'remote-server-timeout', u'wait', u'504',
-                                         text, lang, parent)
+    def create_remote_server_timeout(cls, from_jid=None, to_jid=None, stanza_id=None,
+                                     children=None, text=None, lang=None):
+        return StanzaError.create_as_iq(from_jid, to_jid, u'remote-server-timeout', u'wait', u'504',
+                                         stanza_id=stanza_id, text=text, lang=lang, children=children)
     
     @classmethod
-    def create_resource_contraint(cls, text=None, lang=None, parent=None):
-        return StanzaError._create_error(u'resource-constraint', u'wait', u'500',
-                                         text, lang, parent)
+    def create_resource_contraint(cls, from_jid=None, to_jid=None, stanza_id=None,
+                                  children=None, text=None, lang=None):
+        return StanzaError.create_as_iq(from_jid, to_jid, u'resource-constraint', u'wait', u'500',
+                                         stanza_id=stanza_id, text=text, lang=lang, children=children)
     
     @classmethod
-    def create_service_unavailable(cls, text=None, lang=None, parent=None):
-        return StanzaError._create_error(u'service-unavailable', u'cancel', u'503',
-                                         text, lang, parent)
+    def create_service_unavailable(cls, from_jid=None, to_jid=None, stanza_id=None,
+                                   children=None, text=None, lang=None):
+        return StanzaError.create_as_iq(from_jid, to_jid, u'service-unavailable', u'cancel', u'503',
+                                         stanza_id=stanza_id, text=text, lang=lang, children=children)
     
     @classmethod
-    def create_subscription_required(cls, text=None, lang=None, parent=None):
-        return StanzaError._create_error(u'subscription-required', u'auth', u'407',
-                                         text, lang, parent)
+    def create_subscription_required(cls, from_jid=None, to_jid=None, stanza_id=None,
+                                     children=None, text=None, lang=None):
+        return StanzaError.create_as_iq(from_jid, to_jid, u'subscription-required', u'auth', u'407',
+                                         stanza_id=stanza_id, text=text, lang=lang, children=children)
     
     @classmethod
-    def create_undefined_condition(cls, type=u'cancel', text=None, lang=None, parent=None):
-        return StanzaError._create_error(u'undefined-condition', type, u'500',
-                                         text, lang, parent)
+    def create_undefined_condition(cls, type=u'cancel', text=None, lang=None):
+        return StanzaError.create_as_iq(from_jid, to_jid, u'undefined-condition', type, u'500',
+                                         stanza_id=stanza_id, text=text, lang=lang, children=children)
 
     @classmethod
-    def create_unexpected_request(cls, text=None, lang=None, parent=None):
-        return StanzaError._create_error(u'unexpected-request', u'wait', u'400',
-                                         text, lang, parent)
+    def create_unexpected_request(cls, from_jid=None, to_jid=None, stanza_id=None,
+                                  children=None, text=None, lang=None):
+        return StanzaError.create_as_iq(from_jid, to_jid, u'unexpected-request', u'wait', u'400',
+                                         stanza_id=stanza_id, text=text, lang=lang, children=children)
     

@@ -11,7 +11,7 @@ from bridge.common import XMPP_DISCO_INFO_NS, XMPP_DISCO_ITEMS_NS
 __all__ = ['Disco']
 
 #####################################################################################
-# Defined in XEP-0030
+# Defined in XEP-0030
 #####################################################################################
 class Disco(Entity):
     def __init__(self, stream, proxy_registry=None):
@@ -38,21 +38,32 @@ class Disco(Entity):
         iq_type = iq_parent.get_attribute(u'type')
         if iq_type:
             key = 'disco.%s' % iq_type
+        key = '%s.%s' % (key, e.xml_ns)
         self.proxy_registry.dispatch(key, self, e)
 
-    def register_on_list(self, handler):
-        self.proxy_registry.add_dispatcher('disco.result', handler)
+    def register_on_info_list(self, handler):
+        self.proxy_registry.add_dispatcher('disco.result.%s' % XMPP_DISCO_INFO_NS, handler)
         
-    def register_on_set(self, handler):
-        self.proxy_registry.add_dispatcher('disco.set', handler)
+    def register_on_info_set(self, handler):
+        self.proxy_registry.add_dispatcher('disco.set.%s' % XMPP_DISCO_INFO_NS, handler)
         
-    def register_on_get(self, handler):
-        self.proxy_registry.add_dispatcher('disco.get', handler)
+    def register_on_info_get(self, handler):
+        self.proxy_registry.add_dispatcher('disco.get.%s' % XMPP_DISCO_INFO_NS, handler)
+
+    
+    def register_on_items_list(self, handler):
+        self.proxy_registry.add_dispatcher('disco.result.%s' % XMPP_DISCO_ITEMS_NS, handler)
+        
+    def register_on_items_set(self, handler):
+        self.proxy_registry.add_dispatcher('disco.set.%s' % XMPP_DISCO_ITEMS_NS, handler)
+        
+    def register_on_items_get(self, handler):
+        self.proxy_registry.add_dispatcher('disco.get.%s' % XMPP_DISCO_ITEMS_NS, handler)
 
     ############################################
     # Class API
     ############################################
-    def create_info_query(cls, from_jid, to_jid, stanza_id=None, node_name=None):
+    def create_info_query(cls, from_jid=None, to_jid=None, stanza_id=None, node_name=None):
         iq = Iq.create_get_iq(from_jid=from_jid, to_jid=to_jid,
                               stanza_id=stanza_id)
         query = E(u'query', namespace=XMPP_DISCO_INFO_NS, parent=iq)

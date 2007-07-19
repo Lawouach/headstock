@@ -27,23 +27,6 @@ class FileTransferManager(object):
     def __init__(self, session):
         self.session = session
 
-    def requested(self, si, e):
-        ft = e.get_child('file', XMPP_SI_FILE_TRANSFER_NS)
-        file_transfer = FileTransfer(e.get_attribute('id'), e.get_attribute('mime-type'),
-                                     ft.get_attribute('name'), ft.get_attribute('size'),
-                                     ft.get_attribute('date'), ft.get_attribute('hash'))
-
-##         to_jid = e.xml_parent.get_attribute('from')
-##         iq = SI.create_accept_stream_initiation(unicode(self.session.stream.jid),
-##                                                 to_jid, XMPP_BYTESTREAMS_NS,
-##                                                 stanza_id=generate_unique())
-##         self.session.stream.propagate(element=iq)
-        
-        to_jid = e.xml_parent.get_attribute('from')
-        iq = SI.create_forbidden(unicode(self.session.stream.jid),
-                                 to_jid, stanza_id=generate_unique())
-        self.session.stream.propagate(element=iq)
-
 class SIManager(object):
     def __init__(self):
         pass

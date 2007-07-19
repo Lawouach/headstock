@@ -51,14 +51,22 @@ class DiscoveryManager(object):
         self.session = session
         self.retrieve_dispatcher = None
         self.infos_requested_dispatcher = None
+        self.items_requested_dispatcher = None
+        self.alternate_dispatchers = {}
         
     def on_retrieved(self, handler):
         self.retrieve_dispatcher = handler
 
     def on_infos_requested(self, handler):
         self.infos_requested_dispatcher = handler
-        
-    def discovery_retrieved(self, discovery, e):
+
+    def on_items_requested(self, handler):
+        self.items_requested_dispatcher = handler
+
+    def register_alternate_dispatcher(self, handler, node):
+        self.alternate_dispatchers[node] = handler
+            
+    def discovery_infos_retrieved(self, discovery, e):
         # If no dispatcher is registered to handle
         # an incoming discovery we don't even care...
         if not callable(self.retrieve_dispatcher):
@@ -86,13 +94,22 @@ class DiscoveryManager(object):
                     disco.items.append(item)
             elif c.xml_ns == XMPP_DATA_FORM_NS:
                 disco.data_form = Data.from_element(c)
-                
+
+        node = e.get_attribute('node')
+        if node:
+            node = unicode(node)
+            if node in self.alternate_dispatchers:
+                self.alternate_dispatchers[node](disco)
+                return
+
         self.retrieve_dispatcher(disco)
 
-    def send_information(self, discovery, to_jid, from_jid=None):
+    def send_information(self, discovery, to_jid, from_jid=None, stanza_id=None):
         from_jid = from_jid or unicode(self.session.stream.jid)
+        if not stanza_id:
+            stanza_id = generate_unique()
         iq = Disco.create_result_info_query(from_jid=from_jid, to_jid=to_jid,
-                                            stanza_id=generate_unique())
+                                            stanza_id=stanza_id)
         query = iq.get_child('query', XMPP_DISCO_INFO_NS)
         for ident in discovery.identities:
             attrs = {u'category': ident.category, u'type': ident.type}
@@ -114,10 +131,12 @@ class DiscoveryManager(object):
                                      node_name=node_name)
         self.session.stream.propagate(element=iq)
 
-    def send_items(self, discovery, to_jid, from_jid=None):
+    def send_items(self, discovery, to_jid, from_jid=None, stanza_id=None):
         from_jid = from_jid or unicode(self.session.stream.jid)
+        if not stanza_id:
+            stanza_id = generate_unique()
         iq = Disco.create_result_item_query(from_jid=from_jid, to_jid=to_jid,
-                                            stanza_id=generate_unique())
+                                            stanza_id=stanza_id)
         
         query = iq.get_child('query', XMPP_DISCO_ITEMS_NS)
         for item in discovery.items:
@@ -139,8 +158,11 @@ class DiscoveryManager(object):
                                      node_name=node_name)
         self.session.stream.propagate(element=iq)
         
-    def discovery_request(self, disco, e):
-        if e.xml_ns == XMPP_DISCO_INFO_NS:
-            if callable(self.infos_requested_dispatcher):
-                to_jid = e.xml_parent.get_attribute('from')
-                self.infos_requested_dispatcher(to_jid)
+    def discovery_infos_request(self, disco, e):
+        if callable(self.infos_requested_dispatcher):
+            self.infos_requested_dispatcher(disco.stanza)
+
+    def discovery_items_request(self, disco, e):
+        if callable(self.items_requested_dispatcher):
+            self.items_requested_dispatcher(disco.stanza)
+        
