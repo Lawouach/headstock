@@ -1,10 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from Axon.Component import component
+from Axon.Ipc import shutdownMicroprocess, producerFinished
+
 from headstock.protocol.core.stanza import Stanza
-from headstock.protocol.core import Entity
 from headstock.protocol.core.iq import Iq
 from headstock.lib.utils import generate_unique
+from headstock.api.contact import Roster
 
 #####################################################################################
 # From RFC 3921
@@ -18,112 +21,60 @@ from bridge import Element as E
 from bridge import Attribute as A
 from bridge.common import XMPP_ROSTER_NS, XMPP_VCARD_NS
 
-__all__ = ['Roster']
+__all__ = ['RosterDispatcher', 'request_roster_list']
 
-class Roster(Entity):
-    def __init__(self, stream, proxy_registry=None):
-        Entity.__init__(self, stream, proxy_registry)
+def request_roster_list(from_jid, stanza_id=None):
+    iq = Iq.create_get_iq(from_jid=from_jid, stanza_id=stanza_id)
+    E(u'query', namespace=XMPP_ROSTER_NS, parent=iq)             
 
-    ############################################
-    # Dispatchers registry
-    ############################################
-    def initialize_dispatchers(self):
-        if self.proxy_registry:
-            self.proxy_registry.register('query', self._proxy_dispatcher,
-                                         namespace=XMPP_ROSTER_NS)
-            self.proxy_registry.register('vCard', self._vcard_proxy_dispatcher,
-                                         namespace=XMPP_VCARD_NS)
+    return iq
 
-    def cleanup_dispatchers(self):
-        if self.proxy_registry:
-            self.proxy_registry.cleanup('query', namespace=XMPP_ROSTER_NS)
-            self.proxy_registry.cleanup('vCard', namespace=XMPP_VCARD_NS)
-            
-    def _proxy_dispatcher(self, e):
-        key = 'roster'
-        iq_parent = e.xml_parent
-        iq_type = iq_parent.get_attribute(u'type')
-        if iq_type:
-            key = 'roster.%s' % iq_type
-        self.proxy_registry.dispatch(key, self, e)
-   
-    def _vcard_proxy_dispatcher(self, e):
-        key = 'vcard'
-        iq_parent = e.xml_parent
-        iq_type = iq_parent.get_attribute(u'type')
-        if iq_type:
-            key = 'vcard.%s' % iq_type
-        self.proxy_registry.dispatch(key, self, e)
-        
-    def register_on_list(self, handler):
-        self.proxy_registry.add_dispatcher('roster.result', handler)
-        
-    def register_on_get(self, handler):
-        self.proxy_registry.add_dispatcher('roster.get', handler)
-        
-    def register_on_set(self, handler):
-        self.proxy_registry.add_dispatcher('roster.set', handler)
-
-    def register_on_vcard_received(self, handler):
-        self.proxy_registry.add_dispatcher('vcard.result', handler)
-        
-    def register_on_vcard_request(self, handler):
-        self.proxy_registry.add_dispatcher('vcard.get', handler)
+class RosterDispatcher(component):
     
-    ############################################
-    # Class methods
-    ############################################
-    def create_roster(cls, stanza_id=None, items=None):
-        iq = Iq.create_get_iq(stanza_id=stanza_id)
-        query = E(u'query', namespace=XMPP_ROSTER_NS, parent=iq)
-        if items:
-            for item in items:
-                item.xml_parent = query
-                query.xml_children.append(item)
-        return iq
-    create_roster = classmethod(create_roster)
+    Inboxes = {"inbox"              : "bridge.Element instance",
+               "control"            : "Shutdown the client stream",
+               "forward"            : "headstock.api.contact.Roster instance to be sent back to the client. Transforms the instance to a bridge.Element instance and puts it into the 'outbox'",}
+    
+    Outboxes = {"outbox"            : "bridge.Element instance",
+                "signal"            : "Shutdown signal",
+                "unknown"           : "Unknown element that could not be dispatched properly",
+                "xmpp.result"       : "Query element in response to a query get/set in the roster namespace",
+                "xmpp.get"          : "Get roster list from the server",
+                "xmpp.set"          : "Set the roster list on the server",
+                }
+    
+    def __init__(self):
+       super(RosterDispatcher, self).__init__() 
 
-    def create_set_roster(cls, stanza_id=None, items=None):
-        iq = Iq.create_set_iq(stanza_id=stanza_id)
-        query = E(u'query', namespace=XMPP_ROSTER_NS, parent=iq)
-        if items:
-            for item in items:
-                item.xml_parent = query
-                query.xml_children.append(item)
-        return iq
-    create_set_roster = classmethod(create_set_roster)
+    def main(self):
+        while 1:
+            if self.dataReady("control"):
+                mes = self.recv("control")
+                
+                if isinstance(mes, shutdownMicroprocess) or isinstance(mes, producerFinished):
+                    self.send(producerFinished(), "signal")
+                    break
 
-    def create_result_roster(cls, from_jid=None, to_jid=None, stanza_id=None, items=None):
-        iq = Iq.create_result_iq(from_jid=from_jid, to_jid=to_jid, stanza_id=stanza_id)
-        query = E(u'query', namespace=XMPP_ROSTER_NS, parent=iq)
-        if items:
-            for item in items:
-                item.xml_parent = query
-                query.xml_children.append(item)
-        return iq
-    create_result_roster = classmethod(create_result_roster)
+            if self.dataReady("forward"):
+                r = self.recv("forward")
+                self.send(Roster.to_element(r), "outbox")
 
-    def create_item(cls, jid, name=None, subscription=None, ask=False, groups=None):
-        attributes = {u'jid': jid}
-        if name:
-            attributes[u'name'] = name
-        if subscription:
-            attributes[u'subscription'] = subscription
-        if ask:
-            attributes[u'ask'] = u'subscribe'
-        item = E(u'item', attributes=attributes, namespace=XMPP_ROSTER_NS)
-        for group in groups:
-            E(u'group', content=group, namespace=XMPP_ROSTER_NS, parent=item)
+            if self.dataReady("inbox"):
+                e = self.recv("inbox")
+                roster_type = e.xml_parent.get_attribute(u'type')
+                handled = False
+                if roster_type:
+                    key = 'xmpp.%s' % roster_type
+                    if key in self.outboxes:
+                        r = Roster.from_element(e)
+                        self.send(r, key)
+                        handled = True
 
-        return item
-    create_item = classmethod(create_item)
+                if not handled:
+                    self.send(e, "unknown")
 
-    ############################################
-    # Public instance methods
-    ############################################
-    def retrieve_roster_list(cls, from_jid, stanza_id=None):
-        iq = Iq.create_get_iq(from_jid=from_jid, stanza_id=stanza_id)
-        E(u'query', namespace=XMPP_ROSTER_NS, parent=iq)             
+            if not self.anyReady():
+                self.pause()
+  
+            yield 1
 
-        return iq
-    retrieve_roster_list = classmethod(retrieve_roster_list)

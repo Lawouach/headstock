@@ -7,7 +7,7 @@ import re
 _r_jid = re.compile(u'(?:([\x29\x23-\x25\x28-\x2E\x30-\x39\x3B\x3D\x3F\x41-\x7E]{1,1023})\@)?([a-zA-Z0-9\.\-]{1,1023})(?:/(.{1,1023}))?', re.UNICODE)
 
 class JID(object):
-    def __init__(self, node, domain, resource):
+    def __init__(self, node, domain, resource=None):
         self.node = node
         self.domain = domain
         self.resource = resource

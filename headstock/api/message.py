@@ -13,13 +13,12 @@ class Message(object):
         self.subject = []
         self.timestamp = datetime.now()
 
-    @classmethod
-    def from_element(cls, e):
+    @staticmethod
+    def from_element(e):
         message = Message()
 
-        from_jid = e.get_attribute('from')
-        if from_jid:
-            message.sender = JID.parse(unicode(from_jid))
+        from_jid = e.get_attribute_value('from')
+        message.sender = JID.parse(from_jid)
         
         body = e.get_children('body', e.xml_ns) or []
         for chunk in body:

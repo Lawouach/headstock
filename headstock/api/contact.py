@@ -1,118 +1,108 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-__all__ = ['VCard', 'Contact', 'Roster', 'RosterServer']
+__all__ = ['Contact']
 
-from headstock.api.message import MessageList
-from headstock.api.im import IM
-from headstock.lib.utils import generate_unique
 from headstock.protocol.core.jid import JID
-from headstock.protocol.core.iq import Iq
-from headstock.protocol.core.presence import Presence
-from headstock.protocol.core.roster import Roster
-from headstock.protocol.core.message import Message
-from headstock.protocol.extension.last import Last
-from bridge.common import XMPP_EVENT_NS, XMPP_LAST_NS, \
-     XMPP_OOB_NS, XMPP_XOOB_NS, XMPP_VCARD_NS, XMPP_ROSTER_NS
 from bridge import Element as E
+from bridge.common import XMPP_CLIENT_NS, XMPP_ROSTER_NS
 
 OFFLINE = 0
 ONLINE = 1
 
-class VCard(object):
-    def __init__(self):
-        self.fn = None
-        self.family = None
-        self.given = None
-        self.middle = None
-        self.nickname = None
+__all__ = ['Presence', 'Roster', 'Item']
 
-    def to_element(self, parent=None):
-        vc = E(u'vCard', parent=parent)
-        if self.fn:
-            E(u'FN', content=self.fn, parent=vc)
-            
-        if self.family or self.given or self.middle:
-            n = E(u'N', parent=vc)
-            E(u'FAMILY', content=self.family, parent=n)
-            E(u'GIVEN', content=self.given, parent=n)
-            E(u'MIDDLE', content=self.middle, parent=n)
-
-        if self.nickname:
-            E(u'NICKNAME', content=self.nickname, parent=vc)
-
-        vc.update_prefix(None, None, XMPP_VCARD_NS)
-
-        return vc
+class Presence(object):
+    def __init__(self, from_jid, to_jid):
+        self.from_jid = from_jid
+        self.to_jid = to_jid
+        self.status = None
+        self.show = None
+        self.priority = 0
+        self.subscription = u'none'
 
     def __repr__(self):
-        return '<VCard at %s>' % (hex(id(self)))
+        return '<Presence %s (%s) at %s>' % (str(self.from_jid), self.subscription, hex(id(self)))
 
+    @staticmethod
+    def from_element(e):
+        p = Presence(JID.parse(e.get_attribute_value('from')),
+                     JID.parse(e.get_attribute_value('to')))
+        p.subscription = e.get_attribute_value('type', None)
 
-class Contact(object):
-    def __init__(self, session, jid, availability=OFFLINE):
-        self.session = session
+        show = e.get_child('show', XMPP_CLIENT_NS)
+        if show:
+            p.sshow = show.xml_text
+        
+        status = e.get_child('status', XMPP_CLIENT_NS)
+        if status:
+            p.status = status.xml_text
+        
+        priority = e.get_child('priority', XMPP_CLIENT_NS)
+        if priority:
+            p.priority = int(priority.xml_text)
+
+        return p
+
+    @staticmethod
+    def to_element(p):
+        attrs = {}
+        if p.from_jid:
+            attrs[u'from'] = unicode(p.from_jid)
+        if p.to_jid:
+            attrs[u'to'] = unicode(p.to_jid)
+        if p.subscription:
+            attrs[u'type'] = p.subscription
+        e = E(u'presence', attributes=attrs, namespace=XMPP_CLIENT_NS)
+
+        if p.show:
+            E(u'show', content=p.show, namespace=XMPP_CLIENT_NS, parent=e)
+
+        if p.status:
+            E(u'status', content=p.status, namespace=XMPP_CLIENT_NS, parent=e)
+
+        if p.priority:
+            E(u'show', content=unicode(p.priority),
+              namespace=XMPP_CLIENT_NS, parent=e)
+
+        return e
+
+class Item(object):
+    def __init__(self, jid):
         self.jid = jid
-        self._jid = unicode(self.jid)
         self.name = None
         self.status = None
-        self.state = None
-        self.availability = availability
+        self.availability = OFFLINE
         self.subscription = u'none'
         self.language = None
         self.groups = []
-        self.im = IM(self)
-        self.contacts = []
 
-    @classmethod
-    def from_element(cls, session, item):
-        jid = item.get_attribute('jid')
-        jid = JID.parse(unicode(jid))
-        c = Contact(session, jid)
-
-        name = item.get_attribute('name')
-        if name:
-            c.name = unicode(name)
-
-        subscription = item.get_attribute('subscription')
-        if subscription:
-            c.subscription = unicode(subscription)
-
-        groups = item.get_children('group', XMPP_ROSTER_NS)
-        for group in groups:
-            c.groups.append(group.xml_text)
-
-        return c
-        
     def __repr__(self):
-        return '<Contact %s (%d) at %s>' % (str(self.jid), self.availability, hex(id(self)))
+        return '<Item %s (%d) at %s>' % (str(self.jid), self.availability, hex(id(self)))
 
 class Roster(object):
-    def __init__(self, session):
-        self.session = session
-        self.contacts = {}
-        
-class RosterServer(object):
-    def __init__(self, session):
-        self.session = session
-        
-    def subscription_requested(self, presence, e):
-        contact = Contact(self.session, jid)
-        e = Entity.lookup_by_nodeid(self.stream.jid.nodeid())
-        c = Contact.lookup_by_entity_and_fulljid(e, contact.jid)
-        
-        if not c:
-            c = Contact()
+    def __init__(self, from_jid, to_jid):
+        self.from_jid = from_jid
+        self.to_jid = to_jid
+        self.items = {}
 
-        c.jid = unicode(contact.jid)
-        c.from_state = u'none' 
-        c.to_state = u'out'
-        c.state = contact.state
-        c.entity_id = e.ID
-        c.name = contact.name
-        c.status = contact.availability
-        e.add(c)
-        self.session.storage.save(c)
+    def __repr__(self):
+        return '<Roster %s [%d] at %s>' % (str(self.from_jid), len(self.items), hex(id(self)))
+
+    @staticmethod
+    def from_element(e):
+        r = Roster(JID.parse(e.xml_parent.get_attribute_value('from')),
+                   JID.parse(e.xml_parent.get_attribute_value('to')))
+        for child in e.xml_children:
+            if child.xml_name == 'item':
+                jid = JID.parse(unicode(child.get_attribute('jid')))
+                nodeid = jid.nodeid()
+                item = Item(jid)
+                item.name = child.get_attribute_value('name')
+                groups = child.get_children('group', ns=child.xml_ns) or []
+                for group in groups:
+                    item.groups.append(unicode(group))
+                item.subscription = child.get_attribute_value('subscription')
+                r.items[nodeid] = item
                 
-        contact.push(stanza_id=presence.stanza.id)
-        
+        return r
