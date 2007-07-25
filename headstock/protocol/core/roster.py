@@ -21,13 +21,7 @@ from bridge import Element as E
 from bridge import Attribute as A
 from bridge.common import XMPP_ROSTER_NS, XMPP_VCARD_NS
 
-__all__ = ['RosterDispatcher', 'request_roster_list']
-
-def request_roster_list(from_jid, stanza_id=None):
-    iq = Iq.create_get_iq(from_jid=from_jid, stanza_id=stanza_id)
-    E(u'query', namespace=XMPP_ROSTER_NS, parent=iq)             
-
-    return iq
+__all__ = ['RosterDispatcher']
 
 class RosterDispatcher(component):
     
@@ -37,6 +31,7 @@ class RosterDispatcher(component):
     
     Outboxes = {"outbox"            : "bridge.Element instance",
                 "signal"            : "Shutdown signal",
+                "log"               : "log",
                 "unknown"           : "Unknown element that could not be dispatched properly",
                 "xmpp.result"       : "Query element in response to a query get/set in the roster namespace",
                 "xmpp.get"          : "Get roster list from the server",
@@ -61,13 +56,13 @@ class RosterDispatcher(component):
 
             if self.dataReady("inbox"):
                 e = self.recv("inbox")
+                self.send(('INCOMING', e.xml_parent), "log")
                 roster_type = e.xml_parent.get_attribute(u'type')
                 handled = False
                 if roster_type:
                     key = 'xmpp.%s' % roster_type
                     if key in self.outboxes:
-                        r = Roster.from_element(e)
-                        self.send(r, key)
+                        self.send(Roster.from_element(e), key)
                         handled = True
 
                 if not handled:
@@ -77,4 +72,3 @@ class RosterDispatcher(component):
                 self.pause()
   
             yield 1
-

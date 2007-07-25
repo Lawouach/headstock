@@ -11,6 +11,7 @@ class Message(object):
         self.sender = None
         self.body = []
         self.subject = []
+        self.thread = None
         self.timestamp = datetime.now()
 
     @staticmethod
@@ -27,5 +28,6 @@ class Message(object):
         subjects = e.get_children('subject', e.xml_ns) or []
         for chunk in subjects:
             message.body.append(unicode(chunk))
-            
+
+        
         return message

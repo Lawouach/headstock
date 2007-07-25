@@ -34,6 +34,7 @@ class XMLIncrParser(component):
         # the decision whether or not the element is relevant to them
         # or simply discard it.
         p.register_default(self._done)
+        yield 1
         
         while 1:
             if self.dataReady("control"):

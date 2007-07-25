@@ -4,6 +4,7 @@
 __all__ = ['Contact']
 
 from headstock.protocol.core.jid import JID
+from headstock.api import Entity, Foreign
 from bridge import Element as E
 from bridge.common import XMPP_CLIENT_NS, XMPP_ROSTER_NS
 
@@ -12,14 +13,14 @@ ONLINE = 1
 
 __all__ = ['Presence', 'Roster', 'Item']
 
-class Presence(object):
+class Presence(Entity):
     def __init__(self, from_jid, to_jid):
-        self.from_jid = from_jid
-        self.to_jid = to_jid
+        Entity.__init__(self, from_jid, to_jid)
         self.status = None
         self.show = None
         self.priority = 0
         self.subscription = u'none'
+        self.foreign = []
 
     def __repr__(self):
         return '<Presence %s (%s) at %s>' % (str(self.from_jid), self.subscription, hex(id(self)))
@@ -30,18 +31,17 @@ class Presence(object):
                      JID.parse(e.get_attribute_value('to')))
         p.subscription = e.get_attribute_value('type', None)
 
-        show = e.get_child('show', XMPP_CLIENT_NS)
-        if show:
-            p.sshow = show.xml_text
-        
-        status = e.get_child('status', XMPP_CLIENT_NS)
-        if status:
-            p.status = status.xml_text
-        
-        priority = e.get_child('priority', XMPP_CLIENT_NS)
-        if priority:
-            p.priority = int(priority.xml_text)
-
+        for child in e.xml_children:
+            if child.xml_ns == XMPP_CLIENT_NS:
+                if child.xml_name == 'show':
+                    p.show = child.xml_text
+                elif child.xml_name == 'status':
+                    p.status = child.xml_text
+                elif child.xml_name == 'priority':
+                    p.priority = int(child.xml_text)
+            else:
+                p.foreign.append(Foreign(child))
+                
         return p
 
     @staticmethod
@@ -65,6 +65,9 @@ class Presence(object):
             E(u'show', content=unicode(p.priority),
               namespace=XMPP_CLIENT_NS, parent=e)
 
+        for f in p.foreign:
+            e.xml_children.append(f.e)
+            
         return e
 
 class Item(object):
@@ -80,10 +83,9 @@ class Item(object):
     def __repr__(self):
         return '<Item %s (%d) at %s>' % (str(self.jid), self.availability, hex(id(self)))
 
-class Roster(object):
+class Roster(Entity):
     def __init__(self, from_jid, to_jid):
-        self.from_jid = from_jid
-        self.to_jid = to_jid
+        Entity.__init__(self, from_jid, to_jid)
         self.items = {}
 
     def __repr__(self):

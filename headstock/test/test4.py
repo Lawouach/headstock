@@ -7,9 +7,9 @@ from Kamaelia.Util.Backplane import PublishTo, SubscribeTo
 from Kamaelia.Internet.TCPClient import TCPClient
     
 from headstock.protocol.core.stream import ClientStream, StreamError, SaslError
-from headstock.protocol.core.presence import PresenceDispatcher
+from headstock.protocol.core.presence import PresenceDispatcher, PresenceSubscriber
 from headstock.protocol.core.roster import RosterDispatcher
-from headstock.protocol.core.message import MessageDispatcher
+from headstock.protocol.core.message import MessageDispatcher, MessageEchoer
 from headstock.protocol.core.jid import JID
 from headstock.lib.parser import XMLIncrParser
 from headstock.lib.logger import Logger
@@ -18,6 +18,18 @@ from bridge.common import XMPP_CLIENT_NS, XMPP_ROSTER_NS
 
 def password_lookup(jid):
     return u"test"
+
+def subscription_requested(p):
+    # If you don't accept the subscription request, simply return None
+    # otherwise returns "p"
+
+    # Note that you could for instance call your database, or ask the
+    # user, etc.
+    print "# %s wants to subscribe to you. Enter 'yes' to allow, 'no' otherwise" % str(p.from_jid)
+    allow = raw_input(">>> ")
+    if allow == 'yes':
+        p.swap_jids()
+        return p
 
 def run():
     jid = JID(u'test', u'localhost', u'headstock')
@@ -35,11 +47,23 @@ def run():
               streamerr = StreamError(),
               saslerr = SaslError(),
               presence = Graphline(dispatcher = PresenceDispatcher(),
-                                   linkages = {('', 'inbox'): ('dispatcher', 'inbox'),}),
+                                   logger = PublishTo("LOGGER"),
+                                   sub = PresenceSubscriber(subscription_requested),
+                                   linkages = {('', 'inbox'): ('dispatcher', 'inbox'),
+                                               ("dispatcher", "log"): ("logger", "inbox"),
+                                               ("dispatcher", "xmpp.subscribe"): ("sub", "inbox"),
+                                               ("sub", "outbox"): ("", "outbox")}),
               roster = Graphline(dispatcher = RosterDispatcher(),
-                                 linkages = {('', 'inbox'): ('dispatcher', 'inbox'),}),
+                                 logger = PublishTo("LOGGER"),
+                                 linkages = {('', 'inbox'): ('dispatcher', 'inbox'),
+                                             ("dispatcher", "log"): ("logger", "inbox"),}),
               message = Graphline(dispatcher = MessageDispatcher(),
-                                  linkages = {('', 'inbox'): ('dispatcher', 'inbox'),}),
+                                  echo = MessageEchoer(),
+                                  logger = PublishTo("LOGGER"),
+                                  linkages = {('', 'inbox'): ('dispatcher', 'inbox'),
+                                              ("dispatcher", "log"): ("logger", "inbox"),
+                                              ("dispatcher", "xmpp.chat"): ('echo', 'inbox'),
+                                              ("echo", "outbox"): ('', 'outbox')}),
               linkages = {("tcp", "outbox") : ("xmlparser", "inbox"),
                           ("xmlparser", "outbox") : ("xmpp" , "inbox"),
                           ("xmpp", "outbox") : ("tcp" , "inbox"),

@@ -3,6 +3,8 @@
 from Axon.Component import component
 from Axon.Ipc import shutdownMicroprocess, producerFinished
 
+from bridge import Element as E
+
 import logging
 
 class Logger(component):
@@ -46,7 +48,12 @@ class Logger(component):
                     break
 
             if self.dataReady("inbox"):
-                msg = self.recv("inbox")
+                msg = token = self.recv("inbox")
+                if isinstance(token, tuple):
+                    if isinstance(token[1], E):
+                        msg = "%s : %s" % (msg[0], msg[1].xml(omit_declaration=True, indent=False))
+                    else:
+                        msg = "%s : %s" % (msg[0], msg[1])
                 logger.debug(msg)
 
             if not self.anyReady():

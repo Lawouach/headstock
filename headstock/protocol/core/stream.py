@@ -140,12 +140,20 @@ class ClientStream(component):
         self.status = DISCONNECTED
 
     def log(self, data, type="INCOMING"):
-        """Drops data into the log box. If data is a bridge.Element instance
-        it is serialized to a byte string first."""
-        if isinstance(data, E):
-            data = data.xml(omit_declaration=True, indent=False)
-        self.send("%s: %s" % (type, data), "log")
+        """Drops data into the log box. """
+        self.send((type, data), "log")
         
+    def propagate(self, element=None, raw=None):
+        """Handy method to put either a bridge.Element instance or a raw byte string
+        into the outbox box. If element is passed it will set ``raw`` to a serialized
+        representation of the XML fragment it represents, as a byte string."""
+        if element:
+            raw = element.xml(omit_declaration=True, indent=False)
+
+        if raw:
+            self.log(raw, "OUTGOING")
+            self.send(raw, "outbox")
+
     def _trim_end_tag(self, element, omit_decl=False):
         """The stream element is sent opened. We trim the closing tag
         manually."""
@@ -173,6 +181,7 @@ class ClientStream(component):
         self.propagate(raw=data)
 
     def _handle_features(self, e):
+        self.log(e)
         self.status = CONNECTED
         mechanisms = e.get_child('mechanisms', ns=XMPP_SASL_NS)
         if mechanisms:
@@ -257,26 +266,22 @@ class ClientStream(component):
         #self.jid = JID.parse(e.xml_text)
         
         self.status = ACTIVE
-        
+
+        # Sends the initial presence information to the server
         self.propagate(element=Stanza(u'presence').to_element())
-        
+
+        # Asks immediatly for the client's roster list
         iq = Iq.create_get_iq(from_jid=unicode(self.jid), stanza_id=generate_unique())
         E(u'query', namespace=XMPP_ROSTER_NS, parent=iq)   
         self.propagate(element=iq)
         
-    def propagate(self, element=None, raw=None):
-        """Handy method to put either a bridge.Element instance or a raw byte string
-        into the outbox box. If element is passed it will set ``raw`` to a serialized
-        representation of the XML fragment it represents, as a byte string."""
-        if element:
-            raw = element.xml(omit_declaration=True, indent=False)
-
-        if raw:
-            self.log(raw, "OUTGOING")
-            self.send(raw, "outbox")
-
     def main(self):
+        # Necessary to give the time to the Logger component
+        # (if used) to be initialized as well
+        yield 1
+        
         self._send_stream_header()
+        yield 1
 
         while 1:
             if self.dataReady("control"):
@@ -331,7 +336,6 @@ class ClientStream(component):
                         # been handled previously. In that case we drop it in the
                         # 'unhandled' box in case another component wants to track this
                         # unhandled element.
-                        self.log(e.xml(omit_declaration=True, indent=False))
                         self.send(e, "unhandled")
                         
             if not self.anyReady():
