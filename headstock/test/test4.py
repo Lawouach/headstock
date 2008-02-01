@@ -31,8 +31,8 @@ def subscription_requested(p):
         p.swap_jids()
         return p
 
-def run():
-    jid = JID(u'test', u'localhost', u'headstock')
+def setup(mh):
+    jid = JID(u'test', u'sylvain-laptop', u'headstock')
 
     Backplane("LOGGER").activate()
 
@@ -40,45 +40,51 @@ def run():
              Logger("./test4.log", True)
              ).activate()
 
-    Graphline(logger = PublishTo("LOGGER"),
-              tcp = TCPClient("localhost", 5222),
-              xmlparser = XMLIncrParser(),
-              xmpp = ClientStream(jid, password_lookup),
-              streamerr = StreamError(),
-              saslerr = SaslError(),
-              presence = Graphline(dispatcher = PresenceDispatcher(),
-                                   logger = PublishTo("LOGGER"),
-                                   sub = PresenceSubscriber(subscription_requested),
-                                   linkages = {('', 'inbox'): ('dispatcher', 'inbox'),
-                                               ("dispatcher", "log"): ("logger", "inbox"),
-                                               ("dispatcher", "xmpp.subscribe"): ("sub", "inbox"),
-                                               ("sub", "outbox"): ("", "outbox")}),
-              roster = Graphline(dispatcher = RosterDispatcher(),
-                                 logger = PublishTo("LOGGER"),
-                                 linkages = {('', 'inbox'): ('dispatcher', 'inbox'),
-                                             ("dispatcher", "log"): ("logger", "inbox"),}),
-              message = Graphline(dispatcher = MessageDispatcher(),
-                                  echo = MessageEchoer(),
-                                  logger = PublishTo("LOGGER"),
-                                  linkages = {('', 'inbox'): ('dispatcher', 'inbox'),
-                                              ("dispatcher", "log"): ("logger", "inbox"),
-                                              ("dispatcher", "xmpp.chat"): ('echo', 'inbox'),
-                                              ("echo", "outbox"): ('', 'outbox')}),
-              linkages = {("tcp", "outbox") : ("xmlparser", "inbox"),
-                          ("xmlparser", "outbox") : ("xmpp" , "inbox"),
-                          ("xmpp", "outbox") : ("tcp" , "inbox"),
-                          ("xmpp", "reset"): ("xmlparser", "reset"),
-                          ("xmpp", "log"): ("logger", "inbox"),
-                          ("xmpp", "%s.presence" % XMPP_CLIENT_NS): ("presence", "inbox"),
-                          ("presence", "outbox"): ("xmpp", "forward"),
-                          ("xmpp", "%s.query" % XMPP_ROSTER_NS): ("roster", "inbox"),
-                          ("message", "outbox"): ("xmpp", "forward"),
-                          ("xmpp", "%s.message" % XMPP_CLIENT_NS): ("message", "inbox"),
-                          ("roster", "outbox"): ("xmpp", "forward"),
-                          ("xmpp", "error"): ("streamerr", "inbox"),
-                          ("xmpp", "error"): ("saslerr", "inbox"),}
-              ).run()
+    return Graphline(logger = PublishTo("LOGGER"),
+                     tcp = TCPClient("localhost", 5222),
+                     xmlparser = XMLIncrParser(),
+                     xmpp = ClientStream(jid, password_lookup),
+                     streamerr = StreamError(),
+                     saslerr = SaslError(),
+                     presence = Graphline(dispatcher = PresenceDispatcher(),
+                                          logger = PublishTo("LOGGER"),
+                                          sub = PresenceSubscriber(subscription_requested),
+                                          linkages = {('', 'inbox'): ('dispatcher', 'inbox'),
+                                                      ("dispatcher", "log"): ("logger", "inbox"),
+                                                      ("dispatcher", "xmpp.subscribe"): ("sub", "inbox"),
+                                                      ("sub", "outbox"): ("", "outbox")}),
+                     roster = Graphline(dispatcher = RosterDispatcher(),
+                                        logger = PublishTo("LOGGER"),
+                                        linkages = {('', 'inbox'): ('dispatcher', 'inbox'),
+                                                    ("dispatcher", "log"): ("logger", "inbox"),}),
+                     message = Graphline(dispatcher = MessageDispatcher(),
+                                         msg_handler = mh,
+                                         logger = PublishTo("LOGGER"),
+                                         linkages = {('', 'inbox'): ('dispatcher', 'inbox'),
+                                                     ("dispatcher", "log"): ("logger", "inbox"),
+                                                     ("dispatcher", "xmpp.chat"): ('msg_handler', 'inbox'),}),
+                     linkages = {("tcp", "outbox") : ("xmlparser", "inbox"),
+                                 ("xmlparser", "outbox") : ("xmpp" , "inbox"),
+                                 ("xmpp", "outbox") : ("tcp" , "inbox"),
+                                 ("xmpp", "reset"): ("xmlparser", "reset"),
+                                 ("xmpp", "log"): ("logger", "inbox"),
+                                 ("xmpp", "%s.presence" % XMPP_CLIENT_NS): ("presence", "inbox"),
+                                 ("presence", "outbox"): ("xmpp", "forward"),
+                                 ("xmpp", "%s.query" % XMPP_ROSTER_NS): ("roster", "inbox"),
+                                 ("message", "outbox"): ("xmpp", "forward"),
+                                 ("xmpp", "%s.message" % XMPP_CLIENT_NS): ("message", "inbox"),
+                                 ("roster", "outbox"): ("xmpp", "forward"),
+                                 ("xmpp", "error"): ("streamerr", "inbox"),
+                                 ("xmpp", "error"): ("saslerr", "inbox"),}
+                     )
 
+    
+
+def run(graph):
+    graph.run()
+
+def activate(graph):
+    graph.activate()
     
 if __name__ == '__main__':
     run()

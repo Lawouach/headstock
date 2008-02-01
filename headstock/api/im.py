@@ -75,6 +75,9 @@ class Message(Entity):
                           e.get_attribute_value('lang'))
 
         for child in e.xml_children:
+            if not isinstance(child, E):
+                continue
+            
             if child.xml_ns == XMPP_EVENT_NS:
                 message.event = Event(child.has_child('offline', XMPP_EVENT_NS),
                                       child.has_child('composing', XMPP_EVENT_NS),

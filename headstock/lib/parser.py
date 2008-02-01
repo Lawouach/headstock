@@ -20,10 +20,8 @@ class XMLIncrParser(component):
     def __init__(self):
         super(XMLIncrParser, self).__init__()
 
-    def _done(self, e):
-        # ``e`` is a bridge.Element instance 
+    def _done(self, e): 
         self.send(e, "outbox")
-        #print e.xml(omit_declaration=True)
         
     def main(self):
         p = DispatchParser()
