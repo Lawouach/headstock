@@ -87,4 +87,4 @@ def activate(graph):
     graph.activate()
     
 if __name__ == '__main__':
-    run()
+    run(setup(MessageEchoer()))
