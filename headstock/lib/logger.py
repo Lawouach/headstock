@@ -13,7 +13,7 @@ class Logger(component):
     Outboxes = {"outbox" : "UNUSED",
                 "signal" : "UNUSED",}
    
-    def __init__(self, path, stdout=False):
+    def __init__(self, path=None, stdout=False):
         super(Logger, self).__init__()
 
         self.path = path
@@ -38,6 +38,8 @@ class Logger(component):
             h.setFormatter(logfmt)
             logger.addHandler(h)
 
+        yield 1
+
         while 1:
             if self.dataReady("control"):
                 mes = self.recv("control")
@@ -54,6 +56,9 @@ class Logger(component):
                         msg = "%s : %s" % (msg[0], msg[1].xml(omit_declaration=True, indent=False))
                     else:
                         msg = "%s : %s" % (msg[0], msg[1])
+                elif isinstance(msg, E):
+                    msg = msg.xml(omit_declaration=True, indent=False)
+
                 logger.debug(msg)
 
             if not self.anyReady():

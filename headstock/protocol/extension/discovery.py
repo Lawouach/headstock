@@ -1,104 +1,119 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from headstock.protocol.core.iq import Iq
-from headstock.lib.utils import generate_unique
-from headstock.protocol.core import Entity
+from headstock.api.discovery import FeaturesDiscovery, ItemsDiscovery
 from bridge import Element as E
 from bridge import Attribute as A
 from bridge.common import XMPP_DISCO_INFO_NS, XMPP_DISCO_ITEMS_NS
 
-__all__ = ['Disco']
+from Axon.Component import component
+from Axon.Ipc import shutdownMicroprocess, producerFinished
 
-#####################################################################################
-# Defined in XEP-0030
-#####################################################################################
-class Disco(Entity):
-    def __init__(self, stream, proxy_registry=None):
-        Entity.__init__(self, stream, proxy_registry)
 
-    ############################################
-    # Dispatchers registry
-    ############################################
-    def initialize_dispatchers(self):
-        if self.proxy_registry:
-            self.proxy_registry.register('query', self._proxy_dispatcher,
-                                         namespace=XMPP_DISCO_INFO_NS)
-            self.proxy_registry.register('query', self._proxy_dispatcher,
-                                         namespace=XMPP_DISCO_ITEMS_NS)
+__all__ = ['FeaturesDiscoveryDispatcher', 'ItemsDiscoveryDispatcher']
 
-    def cleanup_dispatchers(self):
-        if self.proxy_registry:
-            self.proxy_registry.cleanup('query', namespace=XMPP_DISCO_INFO_NS)
-            self.proxy_registry.cleanup('query', namespace=XMPP_DISCO_ITEMS_NS)
-            
-    def _proxy_dispatcher(self, e):
-        key = 'disco'
-        iq_parent = e.xml_parent
-        iq_type = iq_parent.get_attribute(u'type')
-        if iq_type:
-            key = 'disco.%s' % iq_type
-        key = '%s.%s' % (key, e.xml_ns)
-        self.proxy_registry.dispatch(key, self, e)
-
-    def register_on_info_list(self, handler):
-        self.proxy_registry.add_dispatcher('disco.result.%s' % XMPP_DISCO_INFO_NS, handler)
-        
-    def register_on_info_set(self, handler):
-        self.proxy_registry.add_dispatcher('disco.set.%s' % XMPP_DISCO_INFO_NS, handler)
-        
-    def register_on_info_get(self, handler):
-        self.proxy_registry.add_dispatcher('disco.get.%s' % XMPP_DISCO_INFO_NS, handler)
-
+class FeaturesDiscoveryDispatcher(component):
     
-    def register_on_items_list(self, handler):
-        self.proxy_registry.add_dispatcher('disco.result.%s' % XMPP_DISCO_ITEMS_NS, handler)
-        
-    def register_on_items_set(self, handler):
-        self.proxy_registry.add_dispatcher('disco.set.%s' % XMPP_DISCO_ITEMS_NS, handler)
-        
-    def register_on_items_get(self, handler):
-        self.proxy_registry.add_dispatcher('disco.get.%s' % XMPP_DISCO_ITEMS_NS, handler)
-
-    ############################################
-    # Class API
-    ############################################
-    def create_info_query(cls, from_jid=None, to_jid=None, stanza_id=None, node_name=None):
-        iq = Iq.create_get_iq(from_jid=from_jid, to_jid=to_jid,
-                              stanza_id=stanza_id)
-        query = E(u'query', namespace=XMPP_DISCO_INFO_NS, parent=iq)
-        if node_name is not None:
-            A(u'node', value=node_name, parent=query)
-
-        return iq
-    create_info_query = classmethod(create_info_query)
+    Inboxes = {"inbox"              : "bridge.Element instance",
+               "control"            : "Shutdown the client stream",
+               "forward"            : "headstock.api.contact.Message instance to be sent back to the client. Transforms the instance to a bridge.Element instance and puts it into the 'outbox'",
+               }
     
-    def create_result_info_query(cls, from_jid, to_jid, stanza_id=None, node_name=None):
-        iq = Iq.create_result_iq(from_jid=from_jid, to_jid=to_jid,
-                                 stanza_id=stanza_id)
-        query = E(u'query', namespace=XMPP_DISCO_INFO_NS, parent=iq)
-        if node_name is not None:
-            A(u'node', value=node_name, parent=query)
+    Outboxes = {"outbox"       : "bridge.Element instance",
+                "signal"       : "Shutdown signal",
+                "log"          : "log",
+                "unknown"      : "Unknown element that could not be dispatched properly",
+                "xmpp.get"     : "Activity requests",
+                "xmpp.result"  : "Activity responses",
+                "xmpp.error"   : "Activity response error",
+                }
+    
+    def __init__(self):
+       super(FeaturesDiscoveryDispatcher, self).__init__() 
 
-        return iq
-    create_result_info_query = classmethod(create_result_info_query)
+    def main(self):
+        while 1:
+            if self.dataReady("control"):
+                mes = self.recv("control")
+                
+                if isinstance(mes, shutdownMicroprocess) or isinstance(mes, producerFinished):
+                    self.send(producerFinished(), "signal")
+                    break
 
-    def create_item_query(cls, from_jid, to_jid, stanza_id=None, node_name=None):
-        iq = Iq.create_get_iq(from_jid=from_jid, to_jid=to_jid,
-                              stanza_id=stanza_id)
-        query = E(u'query', namespace=XMPP_DISCO_ITEMS_NS, parent=iq)
-        if node_name is not None:
-            A(u'node', value=node_name, parent=query)
+            if self.dataReady("forward"):
+                m = self.recv("forward")
+                self.send(FeaturesDiscovery.to_element(m), "outbox")
 
-        return iq
-    create_item_query = classmethod(create_item_query)
+            if self.dataReady("inbox"):
+                handled = False
+                a = self.recv("inbox")
+                e = a.xml_parent 
+                self.send(('INCOMING', e), "log")
+                
+                msg_type = e.get_attribute_value(u'type') or u'get'
+                key = 'xmpp.%s' % unicode(msg_type)
 
-    def create_result_item_query(cls, from_jid, to_jid, stanza_id=None, node_name=None):
-        iq = Iq.create_result_iq(from_jid=from_jid, to_jid=to_jid,
-                                 stanza_id=stanza_id)
-        query = E(u'query', namespace=XMPP_DISCO_ITEMS_NS, parent=iq)
-        if node_name is not None:
-            A(u'node', value=node_name, parent=query)
+                if key in self.outboxes:
+                    self.send(FeaturesDiscovery.from_element(e), key)
+                    handled = True
 
-        return iq
-    create_result_item_query = classmethod(create_result_item_query)
+                if not handled:
+                    self.send(e, "unknown")
+
+            if not self.anyReady():
+                self.pause()
+  
+            yield 1
+
+class ItemsDiscoveryDispatcher(component):
+    
+    Inboxes = {"inbox"              : "bridge.Element instance",
+               "control"            : "Shutdown the client stream",
+               "forward"            : "headstock.api.contact.Message instance to be sent back to the client. Transforms the instance to a bridge.Element instance and puts it into the 'outbox'",
+               }
+    
+    Outboxes = {"outbox"       : "bridge.Element instance",
+                "signal"       : "Shutdown signal",
+                "log"          : "log",
+                "unknown"      : "Unknown element that could not be dispatched properly",
+                "xmpp.get"     : "Activity requests",
+                "xmpp.result"  : "Activity responses",
+                "xmpp.error"   : "Activity response error",
+                }
+    
+    def __init__(self):
+       super(ItemsDiscoveryDispatcher, self).__init__() 
+
+    def main(self):
+        while 1:
+            if self.dataReady("control"):
+                mes = self.recv("control")
+                
+                if isinstance(mes, shutdownMicroprocess) or isinstance(mes, producerFinished):
+                    self.send(producerFinished(), "signal")
+                    break
+
+            if self.dataReady("forward"):
+                m = self.recv("forward")
+                self.send(ItemsDiscovery.to_element(m), "outbox")
+
+            if self.dataReady("inbox"):
+                handled = False
+                e = self.recv("inbox")
+                e = e.xml_parent
+                self.send(('INCOMING', e), "log")
+                
+                msg_type = e.get_attribute_value(u'type') or u'get'
+                key = 'xmpp.%s' % unicode(msg_type)
+
+                if key in self.outboxes:
+                    self.send(ItemsDiscovery.from_element(e), key)
+                    handled = True
+
+                if not handled:
+                    self.send(e, "unknown")
+
+            if not self.anyReady():
+                self.pause()
+  
+            yield 1

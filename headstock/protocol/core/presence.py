@@ -45,6 +45,8 @@ class PresenceDispatcher(component):
         super(PresenceDispatcher, self).__init__() 
 
     def main(self):
+        yield 1
+
         while 1:
             if self.dataReady("control"):
                 mes = self.recv("control")

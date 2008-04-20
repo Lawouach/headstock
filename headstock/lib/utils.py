@@ -2,7 +2,8 @@
 # -*- coding: utf-8 -*-
 
 import sha
-import time
+from time import time
+from random import random
 
 from bridge.common import XML_NS, XMPP_CLIENT_NS
 from headstock.error import HeadstockInvalidStanzaError
@@ -13,7 +14,7 @@ __all__ = ['generate_unique', 'validate_iq_stanza',
 
 def generate_unique(seed=None):
     if not seed:
-        seed = str(time.time())
+        seed = str(time() * random())
     return unicode(abs(hash(sha.new(seed).hexdigest())))
 
 def extract_from_stanza(e):

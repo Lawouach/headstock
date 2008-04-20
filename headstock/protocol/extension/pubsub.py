@@ -1,186 +1,360 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from headstock.protocol.core.iq import Iq
-from headstock.lib.utils import generate_unique
-from headstock.protocol.core import Entity
-from headstock.api.dataform import Data
+from Axon.Component import component
+from Axon.Ipc import shutdownMicroprocess, producerFinished
 
-from bridge import Element as E
-from bridge import Attribute as A
 from bridge.common import XMPP_PUBSUB_NS, XMPP_DISCO_INFO_NS, \
      XMPP_DISCO_ITEMS_NS, XMPP_PUBSUB_OWNER_NS, XMPP_PUBSUB_EVENT_NS
-from bridge.common import xmpp_as_attr, xmpp_as_list, xmpp_attribute_of_element
+from headstock.api.pubsub import Node
 
-__all__ = ['Service']
+__all__ = ['SubscriptionDispatcher', 'NodeCreationDispatcher',
+           'NodeDeletionDispatcher', 'UnsubscriptionDispatcher', 
+           'ItemPublicationDispatcher', 'ItemDeletionDispatcher']
 
-class Service(Entity):
-    def __init__(self, stream, proxy_registry=None):
-        Entity.__init__(self, stream, proxy_registry)
-
-    ############################################
-    # Dispatchers registry
-    ############################################
-    def initialize_dispatchers(self):
-        if self.proxy_registry:
-            self.proxy_registry.register('pubsub', self._proxy_dispatcher,
-                                         namespace=XMPP_PUBSUB_NS)
-
-    def cleanup_dispatchers(self):
-        if self.proxy_registry:
-            self.proxy_registry.cleanup('pubsub', namespace=XMPP_PUBSUB_NS)
+class SubscriptionDispatcher(component):
     
-    def _proxy_dispatcher(self, e):
-        error = e.xml_parent.get_child('error', e.xml_ns)
-        iq_type = unicode(e.xml_parent.get_attribute('type'))
-        if iq_type == 'error':
-            return
-        for c in e.xml_children:
-            if c.xml_ns == XMPP_PUBSUB_NS:
-                key = 'pubsub.%s.%s' % (iq_type, c.xml_name)
-                self.proxy_registry.dispatch(key, self, e)
-
-    def register_on_received_subscriptions(self, handler):
-        self.proxy_registry.add_dispatcher('pubsub.result.subscriptions', handler)
-        
-    def register_on_requested_subscriptions(self, handler):
-        self.proxy_registry.add_dispatcher('pubsub.get.subscriptions', handler)
-
-    ############################################
-    # Class API
-    ############################################
-    def create_subscriptions(cls, from_jid, to_jid, stanza_id=None,
-                             subscriptions=None):
-        iq = Iq.create_get_iq(from_jid=from_jid, to_jid=to_jid,
-                              stanza_id=stanza_id)
-        pubsub = E(u'pubsub', namespace=XMPP_PUBSUB_NS, parent=iq)
-        sub = E(u'subscriptions', namespace=XMPP_PUBSUB_NS, parent=pubsub)
-
-        return iq
-    create_subscriptions = classmethod(create_subscriptions)
+    Inboxes = {"inbox"              : "bridge.Element instance",
+               "control"            : "Shutdown the client stream",
+               "forward"            : "headstock.api.contact.Message instance to be sent back to the client. Transforms the instance to a bridge.Element instance and puts it into the 'outbox'",
+               }
     
-    def create_affiliations(cls, from_jid, to_jid, stanza_id=None,
-                            affiliations=None):
-        iq = Iq.create_get_iq(from_jid=from_jid, to_jid=to_jid,
-                              stanza_id=stanza_id)
-        pubsub = E(u'pubsub', namespace=XMPP_PUBSUB_NS, parent=iq)
-        sub = E(u'affiliations', namespace=XMPP_PUBSUB_NS, parent=pubsub)
-
-        return iq
-    create_affiliations = classmethod(create_affiliations)
-        
-    def create_subscribe(cls, from_jid, to_jid, jid, node_name, stanza_id=None):
-        iq = Iq.create_set_iq(from_jid=from_jid, to_jid=to_jid,
-                              stanza_id=stanza_id)
-        pubsub = E(u'pubsub', namespace=XMPP_PUBSUB_NS, parent=iq)
-        attributes = {u'node': node_name, u'jid': jid}
-        E(u'subscribe', attributes=attributes, namespace=XMPP_PUBSUB_NS, parent=pubsub)
-        return iq
-    create_subscribe = classmethod(create_subscribe)
-
-    def create_configure(cls, from_jid, to_jid, node_name, stanza_id=None):
-        iq = Iq.create_set_iq(from_jid=from_jid, to_jid=to_jid,
-                              stanza_id=stanza_id)
-        pubsub = E(u'pubsub', namespace=XMPP_PUBSUB_OWNER_NS, parent=iq)
-        E(u'configure', attributes = {u'node': node_name},
-          namespace=XMPP_PUBSUB_OWNER_NS, parent=pubsub)
-        return iq
-    create_configure = classmethod(create_configure)
-
-    def create_create_node(cls, from_jid, to_jid, node_name, configure=None, stanza_id=None):
-        iq = Iq.create_set_iq(from_jid=from_jid, to_jid=to_jid,
-                              stanza_id=stanza_id)
-        pubsub = E(u'pubsub', namespace=XMPP_PUBSUB_NS, parent=iq)
-        E(u'create', attributes = {u'node': node_name},
-          namespace=XMPP_PUBSUB_NS, parent=pubsub)
-        c = E(u'configure', namespace=XMPP_PUBSUB_NS, parent=pubsub)
-        if configure:
-            Data.to_element(configure.data, parent=c)
-        return iq
-    create_create_node = classmethod(create_create_node)
+    Outboxes = {"outbox"       : "bridge.Element instance",
+                "signal"       : "Shutdown signal",
+                "log"          : "log",
+                "unknown"      : "Unknown element that could not be dispatched properly",
+                "xmpp.get"     : "Activity requests",
+                "xmpp.set"     : "Activity responses",
+                "xmpp.result"  : "Activity responses",
+                "xmpp.error"   : "Activity response error",
+                }
     
-    def create_delete_node(cls, from_jid, to_jid, node_name, stanza_id=None):
-        iq = Iq.create_set_iq(from_jid=from_jid, to_jid=to_jid,
-                              stanza_id=stanza_id)
-        pubsub = E(u'pubsub', namespace=XMPP_PUBSUB_OWNER_NS, parent=iq)
-        E(u'delete', attributes = {u'node': node_name},
-          namespace=XMPP_PUBSUB_OWNER_NS, parent=pubsub)
-        return iq
-    create_delete_node = classmethod(create_delete_node)
+    def __init__(self):
+       super(SubscriptionDispatcher, self).__init__() 
 
-    def create_purge_node(cls, from_jid, to_jid, node_name, stanza_id=None):
-        iq = Iq.create_set_iq(from_jid=from_jid, to_jid=to_jid,
-                              stanza_id=stanza_id)
-        pubsub = E(u'pubsub', namespace=XMPP_PUBSUB_OWNER_NS, parent=iq)
-        E(u'purge', attributes = {u'node': node_name},
-          namespace=XMPP_PUBSUB_OWNER_NS, parent=pubsub)
-        return iq
-    create_purge_node = classmethod(create_purge_node)
+    def main(self):
+        yield 1
+
+        while 1:
+            if self.dataReady("control"):
+                mes = self.recv("control")
+                
+                if isinstance(mes, shutdownMicroprocess) or isinstance(mes, producerFinished):
+                    self.send(producerFinished(), "signal")
+                    break
+
+            if self.dataReady("forward"):
+                s = self.recv("forward")
+                self.send(Node.to_subscription_element(s), "outbox")
+
+            if self.dataReady("inbox"):
+                handled = False
+                a = self.recv("inbox")
+                e = a.xml_parent.xml_parent
+                self.send(('INCOMING', e), "log")
+                
+                msg_type = e.get_attribute_value(u'type') or 'get'
+                key = 'xmpp.%s' % unicode(msg_type)
+
+                if key in self.outboxes:
+                    self.send(Node.from_subscription_element(e), key)
+                    handled = True
+
+                if not handled:
+                    self.send(e, "unknown")
+                    
+            if not self.anyReady():
+                self.pause()
+  
+            yield 1
+
+        yield 1
+
+class UnsubscriptionDispatcher(component):
     
-    def unsubscribe(self, node_name, subid=None):
-        iq = Iq.create_set_iq(from_jid=self.from_jid, to_jid=self.to_jid,
-                              stanza_id=generate_unique()).to_bridge()
-        pubsub = E(u'pubsub', namespace=XMPP_PUBSUB_NS, parent=iq)
-        attributes = {u'node': node_name, u'jid': self.from_jid}
-        sub = E(u'unsubscribe', attributes=attributes, namespace=XMPP_PUBSUB_NS, parent=pubsub)
-        if subid is not None:
-            A(u'subid', value=subid, parent=sub)
-        r = self.stream.propagate(element=iq)
+    Inboxes = {"inbox"              : "bridge.Element instance",
+               "control"            : "Shutdown the client stream",
+               "forward"            : "headstock.api.contact.Message instance to be sent back to the client. Transforms the instance to a bridge.Element instance and puts it into the 'outbox'",
+               }
+    
+    Outboxes = {"outbox"       : "bridge.Element instance",
+                "signal"       : "Shutdown signal",
+                "log"          : "log",
+                "unknown"      : "Unknown element that could not be dispatched properly",
+                "xmpp.get"     : "Activity requests",
+                "xmpp.set"     : "Activity responses",
+                "xmpp.result"  : "Activity responses",
+                "xmpp.error"   : "Activity response error",
+                }
+    
+    def __init__(self):
+       super(UnsubscriptionDispatcher, self).__init__() 
 
-        e = self.stream.parse(r, as_attribute=xmpp_as_attr, as_list=xmpp_as_list,
-                              as_attribute_of_element=xmpp_attribute_of_element)
+    def main(self):
+        yield 1
 
-        return e
-        
-    def create_node(self, node_name):
-        iq = Iq.create_set_iq(from_jid=self.from_jid, to_jid=self.to_jid,
-                              stanza_id=generate_unique()).to_bridge()
-        pubsub = E(u'pubsub', namespace=XMPP_PUBSUB_NS, parent=iq)
-        attributes = {u'node': node_name}
-        E(u'create', attributes=attributes, namespace=XMPP_PUBSUB_NS, parent=pubsub)
-        E(u'configure', namespace=XMPP_PUBSUB_NS, parent=pubsub)
-        r = self.stream.propagate(element=iq)
+        while 1:
+            if self.dataReady("control"):
+                mes = self.recv("control")
+                
+                if isinstance(mes, shutdownMicroprocess) or isinstance(mes, producerFinished):
+                    self.send(producerFinished(), "signal")
+                    break
 
-        e = self.stream.parse(r)
+            if self.dataReady("forward"):
+                s = self.recv("forward")
+                self.send(Node.to_unsubscription_element(s), "outbox")
 
-        return e
+            if self.dataReady("inbox"):
+                handled = False
+                a = self.recv("inbox")
+                e = a.xml_parent.xml_parent
+                self.send(('INCOMING', e), "log")
+                
+                msg_type = e.get_attribute_value(u'type') or 'get'
+                key = 'xmpp.%s' % unicode(msg_type)
 
-    def create_publish(cls, from_jid, to_jid, node_name, items_id=None, stanza_id=None):
-        iq = Iq.create_set_iq(from_jid=from_jid, to_jid=to_jid, stanza_id=stanza_id)
-        pubsub = E(u'pubsub', namespace=XMPP_PUBSUB_NS, parent=iq)
-        publish = E(u'publish', attributes={u'node': node_name},
-                    namespace=XMPP_PUBSUB_NS, parent=pubsub)
-        attributes = {}
-        if items_id:
-            attributes = {u'id': generate_unique()}
-        item = E(u'item', attributes=attributes, namespace=XMPP_PUBSUB_NS, parent=publish)
+                if key in self.outboxes:
+                    self.send(Node.from_unsubscription_element(e), key)
+                    handled = True
 
-        return iq, item
-    create_publish = classmethod(create_publish)
-        
-    def delete(self, node_name):
-        iq = Iq.create_set_iq(from_jid=self.from_jid, to_jid=self.to_jid,
-                              stanza_id=generate_unique()).to_bridge()
-        pubsub = E(u'pubsub', namespace=XMPP_PUBSUB_NS, parent=iq)
-        attributes = {u'node': node_name}
-        publish = E(u'delete', attributes=attributes, namespace=XMPP_PUBSUB_NS, parent=pubsub)
-        
-        r = self.stream.propagate(element=iq)
+                if not handled:
+                    self.send(e, "unknown")
+                    
+            if not self.anyReady():
+                self.pause()
+  
+            yield 1
 
-        e = self.stream.parse(r)
+        yield 1
 
-        return e
+class NodeCreationDispatcher(component):
+    
+    Inboxes = {"inbox"              : "bridge.Element instance",
+               "control"            : "Shutdown the client stream",
+               "forward"            : "headstock.api.contact.Message instance to be sent back to the client. Transforms the instance to a bridge.Element instance and puts it into the 'outbox'",
+               }
+    
+    Outboxes = {"outbox"       : "bridge.Element instance",
+                "signal"       : "Shutdown signal",
+                "log"          : "log",
+                "unknown"      : "Unknown element that could not be dispatched properly",
+                "xmpp.get"     : "Activity requests",
+                "xmpp.set"     : "Activity responses",
+                "xmpp.result"  : "Activity responses",
+                "xmpp.error"   : "Activity response error",
+                }
+    
+    def __init__(self):
+       super(NodeCreationDispatcher, self).__init__() 
 
-    def purge(self, node_name):
-        iq = Iq.create_set_iq(from_jid=self.from_jid, to_jid=self.to_jid,
-                              stanza_id=generate_unique()).to_bridge()
-        pubsub = E(u'pubsub', namespace=XMPP_PUBSUB_NS, parent=iq)
-        attributes = {u'node': node_name}
-        publish = E(u'purge', attributes=attributes, namespace=XMPP_PUBSUB_NS, parent=pubsub)
-        
-        r = self.stream.propagate(element=iq)
+    def main(self):
+        yield 1
 
-        e = self.stream.parse(r)
+        while 1:
+            if self.dataReady("control"):
+                mes = self.recv("control")
+                
+                if isinstance(mes, shutdownMicroprocess) or isinstance(mes, producerFinished):
+                    self.send(producerFinished(), "signal")
+                    break
 
-        return e
-        
+            if self.dataReady("forward"):
+                s = self.recv("forward")
+                self.send(Node.to_creation_element(s), "outbox")
+
+            if self.dataReady("inbox"):
+                handled = False
+                a = self.recv("inbox")
+                e = a.xml_parent.xml_parent
+                self.send(('INCOMING', e), "log")
+                
+                msg_type = e.get_attribute_value(u'type') or 'get'
+                key = 'xmpp.%s' % unicode(msg_type)
+
+                if key in self.outboxes:
+                    self.send(Node.from_creation_element(e), key)
+                    handled = True
+
+                if not handled:
+                    self.send(e, "unknown")
+                    
+            if not self.anyReady():
+                self.pause()
+  
+            yield 1
+
+        yield 1
+
+class NodeDeletionDispatcher(component):
+    
+    Inboxes = {"inbox"              : "bridge.Element instance",
+               "control"            : "Shutdown the client stream",
+               "forward"            : "headstock.api.contact.Message instance to be sent back to the client. Transforms the instance to a bridge.Element instance and puts it into the 'outbox'",
+               }
+    
+    Outboxes = {"outbox"       : "bridge.Element instance",
+                "signal"       : "Shutdown signal",
+                "log"          : "log",
+                "unknown"      : "Unknown element that could not be dispatched properly",
+                "xmpp.get"     : "Activity requests",
+                "xmpp.set"     : "Activity responses",
+                "xmpp.result"  : "Activity responses",
+                "xmpp.error"   : "Activity response error",
+                }
+    
+    def __init__(self):
+       super(NodeDeletionDispatcher, self).__init__() 
+
+    def main(self):
+        yield 1
+
+        while 1:
+            if self.dataReady("control"):
+                mes = self.recv("control")
+                
+                if isinstance(mes, shutdownMicroprocess) or isinstance(mes, producerFinished):
+                    self.send(producerFinished(), "signal")
+                    break
+
+            if self.dataReady("forward"):
+                s = self.recv("forward")
+                self.send(Node.to_deletion_element(s), "outbox")
+
+            if self.dataReady("inbox"):
+                handled = False
+                a = self.recv("inbox")
+                e = a.xml_parent.xml_parent
+                self.send(('INCOMING', e), "log")
+                
+                msg_type = e.get_attribute_value(u'type') or 'get'
+                key = 'xmpp.%s' % unicode(msg_type)
+
+                if key in self.outboxes:
+                    self.send(Node.from_deletion_element(e), key)
+                    handled = True
+
+                if not handled:
+                    self.send(e, "unknown")
+                    
+            if not self.anyReady():
+                self.pause()
+  
+            yield 1
+
+        yield 1
+
+class ItemPublicationDispatcher(component):
+    
+    Inboxes = {"inbox"              : "bridge.Element instance",
+               "control"            : "Shutdown the client stream",
+               "forward"            : "headstock.api.contact.Message instance to be sent back to the client. Transforms the instance to a bridge.Element instance and puts it into the 'outbox'",
+               }
+    
+    Outboxes = {"outbox"       : "bridge.Element instance",
+                "signal"       : "Shutdown signal",
+                "log"          : "log",
+                "unknown"      : "Unknown element that could not be dispatched properly",
+                "xmpp.get"     : "Activity requests",
+                "xmpp.set"     : "Activity responses",
+                "xmpp.result"  : "Activity responses",
+                "xmpp.error"   : "Activity response error",
+                }
+    
+    def __init__(self):
+       super(ItemPublicationDispatcher, self).__init__() 
+
+    def main(self):
+        yield 1
+
+        while 1:
+            if self.dataReady("control"):
+                mes = self.recv("control")
+                
+                if isinstance(mes, shutdownMicroprocess) or isinstance(mes, producerFinished):
+                    self.send(producerFinished(), "signal")
+                    break
+
+            if self.dataReady("forward"):
+                s = self.recv("forward")
+                self.send(Node.to_publication_element(s), "outbox")
+
+            if self.dataReady("inbox"):
+                handled = False
+                a = self.recv("inbox")
+                e = a.xml_parent.xml_parent
+                self.send(('INCOMING', e), "log")
+                
+                msg_type = e.get_attribute_value(u'type') or 'get'
+                key = 'xmpp.%s' % unicode(msg_type)
+
+                if key in self.outboxes:
+                    self.send(Node.from_publication_element(e), key)
+                    handled = True
+
+                if not handled:
+                    self.send(e, "unknown")
+                    
+            if not self.anyReady():
+                self.pause()
+  
+            yield 1
+
+        yield 1
+
+class ItemDeletionDispatcher(component):
+    
+    Inboxes = {"inbox"              : "bridge.Element instance",
+               "control"            : "Shutdown the client stream",
+               "forward"            : "headstock.api.contact.Message instance to be sent back to the client. Transforms the instance to a bridge.Element instance and puts it into the 'outbox'",
+               }
+    
+    Outboxes = {"outbox"       : "bridge.Element instance",
+                "signal"       : "Shutdown signal",
+                "log"          : "log",
+                "unknown"      : "Unknown element that could not be dispatched properly",
+                "xmpp.get"     : "Activity requests",
+                "xmpp.set"     : "Activity responses",
+                "xmpp.result"  : "Activity responses",
+                "xmpp.error"   : "Activity response error",
+                }
+    
+    def __init__(self):
+       super(ItemDeletionDispatcher, self).__init__() 
+
+    def main(self):
+        yield 1
+
+        while 1:
+            if self.dataReady("control"):
+                mes = self.recv("control")
+                
+                if isinstance(mes, shutdownMicroprocess) or isinstance(mes, producerFinished):
+                    self.send(producerFinished(), "signal")
+                    break
+
+            if self.dataReady("forward"):
+                s = self.recv("forward")
+                self.send(Node.to_retract_element(s), "outbox")
+
+            if self.dataReady("inbox"):
+                handled = False
+                a = self.recv("inbox")
+                e = a.xml_parent.xml_parent
+                self.send(('INCOMING', e), "log")
+                
+                msg_type = e.get_attribute_value(u'type') or 'get'
+                key = 'xmpp.%s' % unicode(msg_type)
+
+                if key in self.outboxes:
+                    self.send(Node.from_retract_element(e), key)
+                    handled = True
+
+                if not handled:
+                    self.send(e, "unknown")
+                    
+            if not self.anyReady():
+                self.pause()
+  
+            yield 1
+
+        yield 1

@@ -21,7 +21,7 @@ from bridge import Element as E
 from bridge import Attribute as A
 from bridge.common import XMPP_ROSTER_NS, XMPP_VCARD_NS
 
-__all__ = ['RosterDispatcher']
+__all__ = ['RosterDispatcher', 'RosterNull']
 
 class RosterDispatcher(component):
     
@@ -42,6 +42,8 @@ class RosterDispatcher(component):
        super(RosterDispatcher, self).__init__() 
 
     def main(self):
+        yield 1
+
         while 1:
             if self.dataReady("control"):
                 mes = self.recv("control")
@@ -67,6 +69,37 @@ class RosterDispatcher(component):
 
                 if not handled:
                     self.send(e, "unknown")
+
+            if not self.anyReady():
+                self.pause()
+  
+            yield 1
+
+
+class RosterNull(component):    
+    Inboxes = {"inbox"              : "headstock.api.contact.Roster instance to be echoed back",
+               "control"            : "Shutdown the client stream",
+               }
+    
+    Outboxes = {"outbox"       : "UNUSED",
+                "signal"       : "Shutdown signal",
+                }
+
+    def __init__(self):
+        """Blkack hole for roster testing purpose"""
+        super(RosterNull, self).__init__() 
+
+    def main(self):
+        while 1:
+            if self.dataReady("control"):
+                mes = self.recv("control")
+                
+                if isinstance(mes, shutdownMicroprocess) or isinstance(mes, producerFinished):
+                    self.send(producerFinished(), "signal")
+                    break
+
+            if self.dataReady("inbox"):
+                self.recv("inbox")
 
             if not self.anyReady():
                 self.pause()

@@ -1,17 +1,20 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-__all__ = ['DiscoveryManager' 'Discovery', 'Identity', 'Feature', 'Item']
 
 from headstock.lib.utils import generate_unique
-from headstock.protocol.extension.discovery import Disco
 from headstock.protocol.core.jid import JID
+from headstock.api import Entity
 from headstock.api.dataform import Data
+from headstock.api.error import Error
+
 from bridge import Element as E
 from bridge import Attribute as A
 from bridge.common import XMPP_DISCO_INFO_NS, XMPP_DISCO_ITEMS_NS, \
      XMPP_OOB_NS, XMPP_SI_NS, XMPP_SI_FILE_TRANSFER_NS, XMPP_BYTESTREAMS_NS,\
-     XMPP_DATA_FORM_NS
+     XMPP_DATA_FORM_NS, XMPP_CLIENT_NS, XMPP_STREAM_NS
+
+__all__ = ['FeaturesDiscovery', 'ItemsDiscovery']
 
 class Identity(object):
     def __init__(self, name=None, category=None, type=None):
@@ -39,130 +42,96 @@ class Item(object):
     def __repr__(self):
         return '<Item %s at %s>' % (str(self.jid), hex(id(self)))
 
-class Discovery(object):
-    def __init__(self):
+class FeaturesDiscovery(Entity):
+    def __init__(self, from_jid, to_jid, node_name=None, type=u'get', stanza_id=None):
+        Entity.__init__(self, from_jid, to_jid, type, stanza_id)
+        self.data_form = None
+        self.node_name = node_name
         self.identities = []
         self.features = []
         self.items = []
-        self.data_form = None
     
-class DiscoveryManager(object):
-    def __init__(self, session):
-        self.session = session
-        self.retrieve_dispatcher = None
-        self.infos_requested_dispatcher = None
-        self.items_requested_dispatcher = None
-        self.alternate_dispatchers = {}
-        
-    def on_retrieved(self, handler):
-        self.retrieve_dispatcher = handler
+    @staticmethod
+    def to_element(e):
+        iq = Entity.to_element(e)
+        attrs = {}
+        if e.node_name:
+            attrs[u'node'] = e.node_name
+        E(u'query', namespace=XMPP_DISCO_INFO_NS, parent=iq,
+          attributes=attrs)
 
-    def on_infos_requested(self, handler):
-        self.infos_requested_dispatcher = handler
+        return iq
 
-    def on_items_requested(self, handler):
-        self.items_requested_dispatcher = handler
+    @staticmethod
+    def from_element(e):
+        disco = FeaturesDiscovery(JID.parse(e.get_attribute_value('from')),
+                                  JID.parse(e.get_attribute_value('to')),
+                                  type=e.get_attribute_value('type'),
+                                  stanza_id=e.get_attribute_value('id'))
 
-    def register_alternate_dispatcher(self, handler, node):
-        self.alternate_dispatchers[node] = handler
-            
-    def discovery_infos_retrieved(self, discovery, e):
-        # If no dispatcher is registered to handle
-        # an incoming discovery we don't even care...
-        if not callable(self.retrieve_dispatcher):
-            return
-
-        disco = Discovery()
         for c in e.xml_children:
             if not isinstance(c, E):
                 continue
             
             if c.xml_ns in [XMPP_DISCO_INFO_NS, XMPP_DISCO_ITEMS_NS]:
-                if c.xml_name == 'identity':
-                    ident = Identity(c.get_attribute('name'),
-                                     c.get_attribute('category'),
-                                     c.get_attribute('type'))
-                    disco.identities.append(ident)
-                elif c.xml_name == 'feature':
-                    feat = Feature(c.get_attribute('var'))
-                    disco.features.append(feat)
-                elif c.xml_name == 'item':
-                    jid = JID.parse(unicode(c.get_attribute('jid')))
-                    item = Item(jid, c.get_attribute('action'),
-                                c.get_attribute('name'),
-                                c.get_attribute('node'))
-                    disco.items.append(item)
-            elif c.xml_ns == XMPP_DATA_FORM_NS:
-                disco.data_form = Data.from_element(c)
+                for i in c.xml_children:
+                    if i.xml_ns in [XMPP_DISCO_INFO_NS, XMPP_DISCO_ITEMS_NS]:
+                        if i.xml_name == 'identity':
+                            ident = Identity(i.get_attribute('name'),
+                                             i.get_attribute('category'),
+                                             i.get_attribute('type'))
+                            disco.identities.append(ident)
+                        elif i.xml_name == 'feature':
+                            feat = Feature(i.get_attribute('var'))
+                            disco.features.append(feat)
+                        elif i.xml_name == 'item':
+                            jid = JID.parse(unicode(i.get_attribute('jid')))
+                            item = Item(jid, i.get_attribute('action'),
+                                        i.get_attribute('name'),
+                                        i.get_attribute('node'))
+                            disco.items.append(item)
+                    elif i.xml_ns == XMPP_DATA_FORM_NS:
+                        disco.data_form = Data.from_element(i)
 
-        node = e.get_attribute('node')
-        if node:
-            node = unicode(node)
-            if node in self.alternate_dispatchers:
-                self.alternate_dispatchers[node](disco)
-                return
+        return disco
 
-        self.retrieve_dispatcher(disco)
+class ItemsDiscovery(Entity):
+    def __init__(self, from_jid, to_jid, node_name=None, type=u'get', stanza_id=None):
+        Entity.__init__(self, from_jid, to_jid, type, stanza_id)
+        self.items = []
+        self.node_name = node_name
+    
+    @staticmethod
+    def to_element(e):
+        iq = Entity.to_element(e)
+        attrs = {u'node': e.node_name}
+        E(u'query', namespace=XMPP_DISCO_ITEMS_NS, parent=iq,
+          attributes=attrs)
 
-    def send_information(self, discovery, to_jid, from_jid=None, stanza_id=None):
-        from_jid = from_jid or unicode(self.session.stream.jid)
-        if not stanza_id:
-            stanza_id = generate_unique()
-        iq = Disco.create_result_info_query(from_jid=from_jid, to_jid=to_jid,
-                                            stanza_id=stanza_id)
-        query = iq.get_child('query', XMPP_DISCO_INFO_NS)
-        for ident in discovery.identities:
-            attrs = {u'category': ident.category, u'type': ident.type}
-            if ident.name:
-                attrs[u'name'] = ident.name
-            E(u'identity', attributes=attrs, parent=query,
-              namespace=XMPP_DISCO_INFO_NS)
+        return iq
 
-        for feat in discovery.features:
-            E(u'feature', attributes={u'var': feat.var}, parent=query,
-              namespace=XMPP_DISCO_INFO_NS)
+    @staticmethod
+    def from_element(e):
+        disco = ItemsDiscovery(JID.parse(e.get_attribute_value('from')),
+                               JID.parse(e.get_attribute_value('to')),
+                               type=e.get_attribute_value('type'),
+                               stanza_id=e.get_attribute_value('id'))
 
-        self.session.stream.propagate(element=iq)
+        for c in e.xml_children:
+            if not isinstance(c, E):
+                continue
 
-    def ask_information(self, to_jid, node_name=None, from_jid=None):
-        from_jid = unicode(self.session.stream.jid)
-        iq = Disco.create_info_query(from_jid=from_jid, to_jid=to_jid,
-                                     stanza_id=generate_unique(),
-                                     node_name=node_name)
-        self.session.stream.propagate(element=iq)
+            if c.xml_ns in [XMPP_DISCO_ITEMS_NS]:
+                if c.xml_name == 'query':
+                    disco.node_name = c.get_attribute_value('node')
+                    for i in c.xml_children:
+                        if i.xml_name == 'item' and i.xml_ns in [XMPP_DISCO_ITEMS_NS]:
+                            jid = JID.parse(unicode(i.get_attribute('jid')))
+                            item = Item(jid, i.get_attribute('action'),
+                                        i.get_attribute('name'),
+                                        i.get_attribute('node'))
+                            disco.items.append(item)
+            elif c.xml_ns == XMPP_CLIENT_NS and c.xml_name == 'error':
+                disco.error = Error.from_element(c)
 
-    def send_items(self, discovery, to_jid, from_jid=None, stanza_id=None):
-        from_jid = from_jid or unicode(self.session.stream.jid)
-        if not stanza_id:
-            stanza_id = generate_unique()
-        iq = Disco.create_result_item_query(from_jid=from_jid, to_jid=to_jid,
-                                            stanza_id=stanza_id)
-        
-        query = iq.get_child('query', XMPP_DISCO_ITEMS_NS)
-        for item in discovery.items:
-            attrs = {u'jid': unicode(item.jid)}
-            
-            if item.name: attrs[u'name'] = item.name
-            if item.node: attrs[u'node'] = item.node
-            if item.action: attrs[u'action'] = item.action
-            
-            E(u'item', attributes=attrs, parent=query,
-              namespace=XMPP_DISCO_ITEMS_NS)
-
-        self.session.stream.propagate(element=iq)
-            
-    def ask_items(self, to_jid, node_name=None, from_jid=None):
-        from_jid = unicode(self.session.stream.jid)
-        iq = Disco.create_item_query(from_jid=from_jid, to_jid=to_jid,
-                                     stanza_id=generate_unique(),
-                                     node_name=node_name)
-        self.session.stream.propagate(element=iq)
-        
-    def discovery_infos_request(self, disco, e):
-        if callable(self.infos_requested_dispatcher):
-            self.infos_requested_dispatcher(disco.stanza)
-
-    def discovery_items_request(self, disco, e):
-        if callable(self.items_requested_dispatcher):
-            self.items_requested_dispatcher(disco.stanza)
-        
+        return disco

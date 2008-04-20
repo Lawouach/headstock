@@ -14,11 +14,12 @@ class JID(object):
 
     @classmethod
     def parse(cls, token):
+        if not token:
+            return
         m = _r_jid.match(token)
         if m is not None:
             node, domain, resource = m.groups()
             return JID(node, domain, resource)
-        return None
 
     def __str__(self):
         if self.node and self.domain and self.resource:

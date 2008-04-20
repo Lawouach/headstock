@@ -46,6 +46,8 @@ class StreamError(component):
         super(StreamError, self).__init__()
 
     def main(self):
+        yield 1
+
         while 1:
             if self.dataReady("control"):
                 mes = self.recv("control")
@@ -90,6 +92,8 @@ class SaslError(component):
         super(SaslError, self).__init__()
 
     def main(self):
+        yield 1
+
         while 1:
             if self.dataReady("control"):
                 mes = self.recv("control")
@@ -117,6 +121,8 @@ class ClientStream(component):
                 "reset"  : "Reset the parser state",
                 "log"    : "String to be logged",
                 "error"  : "bridge.Element instance",
+                "bound"  : "indicates the client has been successfully bound to an XMPP server",
+                "terminated": "Indicates the stream has been terminated by the peer",
                 "unhandled"    : "Contains any bridge.Element which namespace was not handled by a dedicated component",
                 "%s.presence" % XMPP_CLIENT_NS: "Handles 'presence' element in the %s namespace" % XMPP_CLIENT_NS,
                 "%s.query" % XMPP_ROSTER_NS: "Handles 'query' element in the %s namespace" % XMPP_ROSTER_NS,
@@ -138,7 +144,7 @@ class ClientStream(component):
         self.password_lookup = password_lookup
 
         self.status = DISCONNECTED
-
+        
     def log(self, data, type="INCOMING"):
         """Drops data into the log box. """
         self.send((type, data), "log")
@@ -279,7 +285,6 @@ class ClientStream(component):
         # Necessary to give the time to the Logger component
         # (if used) to be initialized as well
         yield 1
-        
         self._send_stream_header()
         yield 1
 
@@ -292,7 +297,7 @@ class ClientStream(component):
                     break
 
             if self.dataReady("forward"):
-                # The fortward box is used by XMPP components to drop a
+                # The forward box is used by XMPP components to drop a
                 # bridge.Element instance that should be passed onto the
                 # the outbox in a serialized format (a byte string).
                 data = self.recv("forward")
@@ -320,10 +325,13 @@ class ClientStream(component):
                         self._handle_session(e)
                     elif (e.xml_ns == XMPP_BIND_NS) and (e.xml_name == 'jid'):
                         self._handle_jid(e)
+                        self.send('', 'bound')
                 elif (e.xml_ns == XMPP_STREAM_NS) and (e.xml_name == 'error'):
                     self.send(e, "error")
                 elif (e.xml_ns == XMPP_SASL_NS) and (e.xml_name == 'failure'):
                     self.send(e, "error")
+                elif (e.xml_ns == XMPP_STREAM_NS) and (e.xml_name == 'stream'):
+                    self.send("", "terminated")
                 else:
                     # Once we are authentified and a session was created with
                     # the server we can dispatch the incoming elements to their

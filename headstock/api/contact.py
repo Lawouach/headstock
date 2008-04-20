@@ -14,7 +14,7 @@ ONLINE = 1
 __all__ = ['Presence', 'Roster', 'Item']
 
 class Presence(Entity):
-    def __init__(self, from_jid, to_jid):
+    def __init__(self, from_jid, to_jid=None):
         Entity.__init__(self, from_jid, to_jid)
         self.status = None
         self.show = None
@@ -93,6 +93,7 @@ class Roster(Entity):
 
     @staticmethod
     def from_element(e):
+        print e.xml()
         r = Roster(JID.parse(e.xml_parent.get_attribute_value('from')),
                    JID.parse(e.xml_parent.get_attribute_value('to')))
         for child in e.xml_children:
