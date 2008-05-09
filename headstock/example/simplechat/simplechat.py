@@ -30,26 +30,34 @@ from bridge.common import XMPP_CLIENT_NS, XMPP_ROSTER_NS, \
 __all__ = ['Client']
 
 class RosterHandler(component):    
-    Inboxes = {"inbox"              : "headstock.api.contact.Roster instance to be echoed back",
-               "control"            : "Shutdown the client stream",
-               "jid" :"",
-               "ask-activity": "",
-               }
+    Inboxes = {"inbox"        : "headstock.api.contact.Roster instance",
+               "control"      : "stops the component",
+               "jid"          : "headstock.api.jid.JID instance received from the server",
+               "ask-activity" : "request activity status to the server for each roster contact"}
     
-    Outboxes = {"outbox"       : "UNUSED",
-                "signal"       : "Shutdown signal",
-                "message"      : "Message to send",
-                "activity"     : "", }
+    Outboxes = {"outbox"      : "UNUSED",
+                "signal"      : "Shutdown signal",
+                "message"     : "Message to send",
+                "activity"    : "headstock.api.activity.Activity instance to send to the server"}
 
     def __init__(self, from_jid):
         super(RosterHandler, self).__init__() 
         self.from_jid = from_jid
         self.roster = None
 
-    def main(self):
+    def initComponents(self):
+        # We subscribe to the JID backplane component
+        # that will inform us when the server has
+        # returned the per-session jid
         sub = SubscribeTo("JID")
-        sub.activate()
         self.link((sub, 'outbox'), (self, 'jid'))
+        self.addChildren(sub)
+        sub.activate()
+
+        return 1
+
+    def main(self):
+        yield self.initComponents()
 
         while 1:
             if self.dataReady("control"):
@@ -70,8 +78,6 @@ class RosterHandler(component):
                     contact = roster.items[nodeid]
                     print "  ", contact.jid
                     
-                    #
-
             if self.dataReady('ask-activity'):
                 self.recv('ask-activity')
                 if self.roster:
@@ -86,27 +92,32 @@ class RosterHandler(component):
             yield 1
 
 class DummyMessageHandler(component):
-    Inboxes = {"inbox"              : "headstock.api.contact.Message instance to be echoed back",
-               "control"            : "Shutdown the client stream",
-               "jid": "",
-               }
+    Inboxes = {"inbox"    : "headstock.api.contact.Message instance received from a peer"\
+                   "or the string input in the console",
+               "control"  : "stops the component"}
     
-    Outboxes = {"outbox"       : "bridge.Element instance generated from the Message instance",
-                "signal"       : "Shutdown signal",
-                }
+    Outboxes = {"outbox"  : "headstock.api.im.Message to send to the client",
+                "signal"  : "Shutdown signal"}
 
     def __init__(self):
         super(DummyMessageHandler, self).__init__() 
         self.from_jid = None
 
-    def main(self):
+    def initComponents(self):
         sub = SubscribeTo("JID")
         self.link((sub, 'outbox'), (self, 'jid'))
+        self.addChildren(sub)
         sub.activate()
 
         sub = SubscribeTo("CONSOLE")
         self.link((sub, 'outbox'), (self, 'inbox'))
+        self.addChildren(sub)
         sub.activate()
+
+        return 1
+
+    def main(self):
+        yield self.initComponents()
 
         while 1:
             if self.dataReady("control"):
@@ -120,16 +131,29 @@ class DummyMessageHandler(component):
             
             if self.dataReady("inbox"):
                 m = self.recv("inbox")
+                # in this first case, we want to send the message
+                # typed in the console.
+                # The message is of the form:
+                #    contant_jid message
                 if isinstance(m, str) and m != '':
-                    contact_jid, message = m.split(' ', 1)
+                    try:
+                        contact_jid, message = m.split(' ', 1)
+                    except ValueError:
+                        print "Messages format: contact_jid message"
+                        continue
                     m = Message(unicode(self.from_jid), unicode(contact_jid), 
                                 type=u'chat', stanza_id=generate_unique())
-                    m.event = Event.composing
+                    m.event = Event.composing # note the composing event status
                     m.bodies.append(Body(unicode(message)))
                     self.send(m, "outbox")
+                    
+                    # Right after we sent the first message
+                    # we send another one reseting the event status
                     m = Message(unicode(self.from_jid), unicode(contact_jid), 
                                 type=u'chat', stanza_id=generate_unique())
                     self.send(m, "outbox")
+                # In this case we actually received a message
+                # from a contact, we print it.
                 elif isinstance(m, Message):
                     for body in m.bodies:
                         print m.from_jid, ": ", str(body)
@@ -140,34 +164,43 @@ class DummyMessageHandler(component):
             yield 1
 
 class DiscoHandler(component):
-    Inboxes = {"inbox"       : "",
-               "control"     : "", 
-               "initiate"    : "",
-               "jid" :"",
-               "features.result": "",}
+    Inboxes = {"inbox"          : "UNUSED",
+               "control"        : "stops the component", 
+               "initiate"       : "event informing the component the client session is active",
+               "jid"            : "headstock.api.jid.JID instance received from the server",
+               "features.result": "headstock.api.discovery.FeaturesDiscovery instance from the server",}
     
-    Outboxes = {"outbox"        : "",
-                "signal"        : "Shutdown signal",
-                "features-disco": "",  
-                "features-announce": ""}
+    Outboxes = {"outbox"           : "UNUSED",
+                "signal"           : "Shutdown signal",
+                "features-disco"   : "headstock.api.discovery.FeaturesDiscovery query to the server",  
+                "features-announce": "headstock.api.discovery.FeaturesDiscovery informs"\
+                    "the other components about the features instance received from the server"}
 
     def __init__(self, from_jid, to_jid):
         super(DiscoHandler, self).__init__() 
         self.from_jid = from_jid
         self.to_jid = to_jid
 
-    def main(self):
+    def initComponents(self):
         sub = SubscribeTo("JID")
-        sub.activate()
         self.link((sub, 'outbox'), (self, 'jid'))
+        self.addChildren(sub)
+        sub.activate()
 
         pub = PublishTo("DISCO_FEAT")
-        pub.activate()
         self.link((self, 'features-announce'), (pub, 'inbox'))
+        self.addChildren(sub)
+        sub.activate()
 
         sub = SubscribeTo("BOUND")
-        sub.activate()
         self.link((sub, 'outbox'), (self, 'initiate'))
+        self.addChildren(sub)
+        sub.activate()
+
+        return 1
+
+    def main(self):
+        yield self.initComponents()
 
         while 1:
             if self.dataReady("control"):
@@ -205,23 +238,29 @@ class DiscoHandler(component):
             yield 1
 
 class ActivityHandler(component):
-    Inboxes = {"inbox"              : "",
-               "control"            : "Shutdown the client stream",
+    Inboxes = {"inbox"   : "headstock.api.discovery.FeaturesDiscovery instance",
+               "control" : "stops the component",
                }
     
-    Outboxes = {"outbox"       : "bridge.Element instance generated from the Message instance",
-                "signal"       : "Shutdown signal",
-                "activity-supported": "",
+    Outboxes = {"outbox"            : "UNUSED",
+                "signal"            : "Shutdown signal",
+                "activity-supported": "when used this tells the RosterHandler it needs"\
+                    "to request the server for each contact's activity."\
+                    "This is only used when the server supports the feature",
                 }
 
     def __init__(self):
         super(ActivityHandler, self).__init__() 
 
-    def main(self):
+    def initComponents(self):
         sub = SubscribeTo("DISCO_FEAT")
-        sub.activate()
         self.link((sub, 'outbox'), (self, 'inbox'))
+        self.addChildren(sub)
+        sub.activate()
+        
+        return 1
 
+    def main(self):
         while 1:
             if self.dataReady("control"):
                 mes = self.recv("control")
