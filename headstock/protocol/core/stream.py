@@ -114,13 +114,18 @@ class SaslError(component):
 class ClientStream(component):
     Inboxes = {"inbox"   : "bridge.Element instance",
                "control" : "Shutdown the client stream",
-               "forward": "bridge.Element instance to be sent out to the client",}
+               "forward": "bridge.Element instance to be sent out to the client",
+               "proceedtls": "",
+               "tlssuccess": "",
+               "tlsfailure": ""}
     
     Outboxes = {"outbox" : "Any string data to be passed to the client",
                 "signal" : "Shutdown signal",
                 "reset"  : "Reset the parser state",
                 "log"    : "String to be logged",
                 "error"  : "bridge.Element instance",
+                "starttls": "",
+                "jid"    : "",
                 "bound"  : "indicates the client has been successfully bound to an XMPP server",
                 "terminated": "Indicates the stream has been terminated by the peer",
                 "unhandled"    : "Contains any bridge.Element which namespace was not handled by a dedicated component",
@@ -128,7 +133,7 @@ class ClientStream(component):
                 "%s.query" % XMPP_ROSTER_NS: "Handles 'query' element in the %s namespace" % XMPP_ROSTER_NS,
                 "%s.message" % XMPP_CLIENT_NS: "Handles 'message' element in the %s namespace" %XMPP_CLIENT_NS}
    
-    def __init__(self, jid=None, password_lookup=None):
+    def __init__(self, jid=None, password_lookup=None, use_tls=False):
         """
         A client stream is the interface between a remote XMPP service
         and the client. It handles the connection and authentication.
@@ -142,6 +147,7 @@ class ClientStream(component):
 
         self.jid = jid
         self.password_lookup = password_lookup
+        self.use_tls = use_tls
 
         self.status = DISCONNECTED
         
@@ -176,8 +182,7 @@ class ClientStream(component):
         return xmlstr[:pos]
 
     def _send_stream_header(self, omit_decl=False):
-        attributes = {u'to': self.jid.domain, u'version': u'1.0',
-                      u'id': generate_unique()}
+        attributes = {u'to': self.jid.domain, u'version': u'1.0'}
         stream = E(u'stream', attributes=attributes,
                    prefix=XMPP_STREAM_PREFIX, namespace=XMPP_STREAM_NS)
 
@@ -190,9 +195,20 @@ class ClientStream(component):
         self.log(e)
         self.status = CONNECTED
         mechanisms = e.get_child('mechanisms', ns=XMPP_SASL_NS)
-        if mechanisms:
+        support_tls = e.get_child('starttls', ns=XMPP_TLS_NS)
+        if support_tls and self.use_tls:
+            tls = E(u'starttls', namespace=XMPP_TLS_NS)
+            self.propagate(element=tls)
+        elif mechanisms:
             self._handle_mechanisms(mechanisms)
             
+    def _handle_tls(self):
+        self._reset_stream_header(omit_decl=True)
+
+    def _proceed_tls(self, e):
+        self.log(e)
+        self.send('', 'starttls')
+
     def _handle_challenge(self, e):
         self.log(e)
         response_token = None
@@ -269,13 +285,15 @@ class ClientStream(component):
 
     def _handle_jid(self, e):
         self.log(e)
-        #self.jid = JID.parse(e.xml_text)
+        self.jid = JID.parse(e.xml_text)
         
         self.status = ACTIVE
 
+        self.send(self.jid, 'jid')
+
         # Sends the initial presence information to the server
         self.propagate(element=Stanza(u'presence').to_element())
-
+        
         # Asks immediatly for the client's roster list
         iq = Iq.create_get_iq(from_jid=unicode(self.jid), stanza_id=generate_unique())
         E(u'query', namespace=XMPP_ROSTER_NS, parent=iq)   
@@ -296,6 +314,12 @@ class ClientStream(component):
                     self.send(producerFinished(), "signal")
                     break
 
+            if self.dataReady('tlssuccess'):
+                self.recv('tlssuccess')
+                yield 1
+                self._handle_tls()
+                yield 1
+
             if self.dataReady("forward"):
                 # The forward box is used by XMPP components to drop a
                 # bridge.Element instance that should be passed onto the
@@ -315,6 +339,9 @@ class ClientStream(component):
                     # OK the if/elif thing is ugly. I know.
                     if (e.xml_ns == XMPP_STREAM_NS) and (e.xml_name == 'features'):
                         self._handle_features(e)
+                    elif (e.xml_ns == XMPP_TLS_NS) and (e.xml_name == 'proceed'):
+                        self._proceed_tls(e)
+                        yield 1
                     elif (e.xml_ns == XMPP_SASL_NS) and (e.xml_name == 'challenge'):
                         self._handle_challenge(e)
                     elif (e.xml_ns == XMPP_SASL_NS) and (e.xml_name == 'success'):
@@ -345,6 +372,7 @@ class ClientStream(component):
                         # 'unhandled' box in case another component wants to track this
                         # unhandled element.
                         self.send(e, "unhandled")
+                e = None
                         
             if not self.anyReady():
                 self.pause()

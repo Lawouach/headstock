@@ -2,14 +2,16 @@
 
 from Axon.Component import component
 from Axon.Ipc import shutdownMicroprocess, producerFinished
+from Kamaelia.Chassis.Graphline import Graphline
 
 from bridge.common import XMPP_PUBSUB_NS, XMPP_DISCO_INFO_NS, \
      XMPP_DISCO_ITEMS_NS, XMPP_PUBSUB_OWNER_NS, XMPP_PUBSUB_EVENT_NS
-from headstock.api.pubsub import Node
+from headstock.api.pubsub import Node, Message
 
 __all__ = ['SubscriptionDispatcher', 'NodeCreationDispatcher',
            'NodeDeletionDispatcher', 'UnsubscriptionDispatcher', 
-           'ItemPublicationDispatcher', 'ItemDeletionDispatcher']
+           'ItemPublicationDispatcher', 'ItemDeletionDispatcher',
+           'MessageEventDispatcher', 'PubSubDispatcher']
 
 class SubscriptionDispatcher(component):
     
@@ -352,6 +354,257 @@ class ItemDeletionDispatcher(component):
                 if not handled:
                     self.send(e, "unknown")
                     
+            if not self.anyReady():
+                self.pause()
+  
+            yield 1
+
+        yield 1
+
+class MessageEventDispatcher(component):
+    
+    Inboxes = {"inbox"              : "bridge.Element instance",
+               "control"            : "",}
+    
+    Outboxes = {"outbox"       : "bridge.Element instance",
+                "signal"       : "Shutdown signal",
+                "log"          : "log",
+                "unknown"      : "Unknown element that could not be dispatched properly",
+                "xmpp.message" : "Activity requests",
+                }
+    
+    def __init__(self):
+       super(MessageEventDispatcher, self).__init__() 
+
+    def main(self):
+        yield 1
+
+        while 1:
+            if self.dataReady("control"):
+                mes = self.recv("control")
+                
+                if isinstance(mes, shutdownMicroprocess) or isinstance(mes, producerFinished):
+                    self.send(producerFinished(), "signal")
+                    break
+
+            if self.dataReady("inbox"):
+                handled = False
+                a = self.recv("inbox")
+                e = a.xml_parent
+                self.send(('INCOMING', e), "log")
+                self.send(Message.from_element(e), "xmpp.message")
+                    
+            if not self.anyReady():
+                self.pause()
+  
+            yield 1
+
+        yield 1
+
+class PubSubDispatcher(component):
+    Inboxes = {"inbox"               : "bridge.Element instance",
+               "control"             : "Shutdown the client stream",
+               "create.inbox"        : "",
+               "create.forward"      : "",
+               "delete.inbox"        : "",
+               "delete.forward"      : "",
+               "subscribe.inbox"     : "",
+               "subscribe.forward"   : "",
+               "unsubscribe.inbox"   : "",
+               "unsubscribe.forward"  : "",
+               "publish.inbox"       : "",
+               "publish.forward"     : "",
+               "retract.inbox"       : "",
+               "retract.forward"     : "",
+               "message.inbox"       : "",
+               "in.create.get"          : "Publish items requests",
+               "in.create.set"          : "Publish items responses",
+               "in.create.result"       : "Publish items responses",
+               "in.delete.error"        : "Publish items response error",
+               "in.delete.get"          : "Publish items requests",
+               "in.delete.set"          : "Publish items responses",
+               "in.delete.result"       : "Publish items responses",
+               "in.create.error"        : "Publish items response error",
+               "in.subscribe.get"       : "Publish items requests",
+               "in.subscribe.set"       : "Publish items responses",
+               "in.subscribe.result"    : "Publish items responses",
+               "in.subscribe.error"     : "Publish items response error",
+               "in.unsubscribe.get"     : "Publish items requests",
+               "in.unsubscribe.set"     : "Publish items responses",
+               "in.unsubscribe.result"  : "Publish items responses",
+               "in.unsubscribe.error"   : "Publish items response error",
+               "in.publish.get"         : "Publish items requests",
+               "in.publish.set"         : "Publish items responses",
+               "in.publish.result"      : "Publish items responses",
+               "in.publish.error"       : "Publish items response error",
+               "in.retract.get"         : "Retract item requests",
+               "in.retract.set"         : "Retract item responses",
+               "in.retract.result"      : "Retract item responses",
+               "in.retract.error"       : "Retract item response error"}
+    
+    Outboxes = {"outbox"                  : "bridge.Element instance",
+                "signal"                  : "Shutdown signal",
+                "unknown"                 : "Unknown element that could not be dispatched properly",
+                "log"                     : "log",
+                "create.outbox"           : "",
+                "delete.outbox"           : "",
+                "subscribe.outbox"        : "",
+                "unsubscribe.outbox"      : "",
+                "publish.outbox"          : "",
+                "retract.outbox"          : "",
+                "message.outbox"          : "",
+                "out.create.get"          : "Publish items requests",
+                "out.create.set"          : "Publish items responses",
+                "out.create.result"       : "Publish items responses",
+                "out.delete.error"        : "Publish items response error",
+                "out.delete.get"          : "Publish items requests",
+                "out.delete.set"          : "Publish items responses",
+                "out.delete.result"       : "Publish items responses",
+                "out.create.error"        : "Publish items response error",
+                "out.subscribe.get"       : "Publish items requests",
+                "out.subscribe.set"       : "Publish items responses",
+                "out.subscribe.result"    : "Publish items responses",
+                "out.subscribe.error"     : "Publish items response error",
+                "out.unsubscribe.get"     : "Publish items requests",
+                "out.unsubscribe.set"     : "Publish items responses",
+                "out.unsubscribe.result"  : "Publish items responses",
+                "out.unsubscribe.error"   : "Publish items response error",
+                "out.publish.get"         : "Publish items requests",
+                "out.publish.set"         : "Publish items responses",
+                "out.publish.result"      : "Publish items responses",
+                "out.publish.error"       : "Publish items response error",
+                "out.retract.get"         : "Retract item requests",
+                "out.retract.set"         : "Retract item responses",
+                "out.retract.result"      : "Retract item responses",
+                "out.retract.error"       : "Retract item response error",
+                "out.message"             : "Retract item requests",}
+    
+    def __init__(self):
+       super(PubSubDispatcher, self).__init__() 
+
+    def initComponents(self):
+        subdisp = SubscriptionDispatcher()
+        self.link((self, 'subscribe.inbox'), (subdisp, 'inbox'), passthrough=1)
+        self.link((self, 'subscribe.forward'), (subdisp, 'forward'), passthrough=1)
+        self.link((self, 'in.subscribe.get'), (subdisp, 'forward'), passthrough=1)
+        self.link((self, 'in.subscribe.set'), (subdisp, 'forward'), passthrough=1)
+        self.link((self, 'in.subscribe.result'), (subdisp, 'forward'), passthrough=1)
+        self.link((self, 'in.subscribe.error'), (subdisp, 'forward'), passthrough=1)
+        self.link((subdisp, 'outbox'), (self, 'subscribe.outbox'), passthrough=2)
+        self.link((subdisp, 'xmpp.get'), (self, 'out.subscribe.get'), passthrough=2)
+        self.link((subdisp, 'xmpp.set'), (self, 'out.subscribe.set'), passthrough=2)
+        self.link((subdisp, 'xmpp.result'), (self, 'out.subscribe.result'), passthrough=2)
+        self.link((subdisp, 'xmpp.error'), (self, 'out.subscribe.error'), passthrough=2)
+        self.link((subdisp, 'unknown'), (self, 'unknown'), passthrough=2)
+        self.link((subdisp, 'log'), (self, 'log'), passthrough=2)
+        self.addChildren(subdisp)
+        subdisp.activate()
+
+        unsubdisp = UnsubscriptionDispatcher()
+        self.link((self, 'unsubscribe.inbox'), (unsubdisp, 'inbox'), passthrough=1)
+        self.link((self, 'unsubscribe.forward'), (unsubdisp, 'forward'), passthrough=1)
+        self.link((self, 'in.unsubscribe.get'), (unsubdisp, 'forward'), passthrough=1)
+        self.link((self, 'in.unsubscribe.set'), (unsubdisp, 'forward'), passthrough=1)
+        self.link((self, 'in.unsubscribe.result'), (unsubdisp, 'forward'), passthrough=1)
+        self.link((self, 'in.unsubscribe.error'), (unsubdisp, 'forward'), passthrough=1)
+        self.link((unsubdisp, 'outbox'), (self, 'unsubscribe.outbox'), passthrough=2)
+        self.link((unsubdisp, 'xmpp.get'), (self, 'out.unsubscribe.get'), passthrough=2)
+        self.link((unsubdisp, 'xmpp.set'), (self, 'out.unsubscribe.set'), passthrough=2)
+        self.link((unsubdisp, 'xmpp.result'), (self, 'out.unsubscribe.result'), passthrough=2)
+        self.link((unsubdisp, 'xmpp.error'), (self, 'out.unsubscribe.error'), passthrough=2)
+        self.link((unsubdisp, 'unknown'), (self, 'unknown'), passthrough=2)
+        self.link((unsubdisp, 'log'), (self, 'log'), passthrough=2)
+        self.addChildren(unsubdisp)
+        unsubdisp.activate()
+
+        nodecreatedisp = NodeCreationDispatcher()
+        self.link((self, 'create.inbox'), (nodecreatedisp, 'inbox'), passthrough=1)
+        self.link((self, 'create.forward'), (nodecreatedisp, 'forward'), passthrough=1)
+        self.link((self, 'in.create.get'), (nodecreatedisp, 'forward'), passthrough=1)
+        self.link((self, 'in.create.set'), (nodecreatedisp, 'forward'), passthrough=1)
+        self.link((self, 'in.create.result'), (nodecreatedisp, 'forward'), passthrough=1)
+        self.link((self, 'in.create.error'), (nodecreatedisp, 'forward'), passthrough=1)
+        self.link((nodecreatedisp, 'outbox'), (self, 'create.outbox'), passthrough=2)
+        self.link((nodecreatedisp, 'xmpp.get'), (self, 'out.create.get'), passthrough=2)
+        self.link((nodecreatedisp, 'xmpp.set'), (self, 'out.create.set'), passthrough=2)
+        self.link((nodecreatedisp, 'xmpp.result'), (self, 'out.create.result'), passthrough=2)
+        self.link((nodecreatedisp, 'xmpp.error'), (self, 'out.create.error'), passthrough=2)
+        self.link((nodecreatedisp, 'unknown'), (self, 'unknown'), passthrough=2)
+        self.link((nodecreatedisp, 'log'), (self, 'log'), passthrough=2)
+        self.addChildren(nodecreatedisp)
+        nodecreatedisp.activate()
+
+        nodedeletedisp = NodeDeletionDispatcher()
+        self.link((self, 'delete.inbox'), (nodedeletedisp, 'inbox'), passthrough=1)
+        self.link((self, 'delete.forward'), (nodedeletedisp, 'forward'), passthrough=1)
+        self.link((self, 'in.delete.get'), (nodedeletedisp, 'forward'), passthrough=1)
+        self.link((self, 'in.delete.set'), (nodedeletedisp, 'forward'), passthrough=1)
+        self.link((self, 'in.delete.result'), (nodedeletedisp, 'forward'), passthrough=1)
+        self.link((self, 'in.delete.error'), (nodedeletedisp, 'forward'), passthrough=1)
+        self.link((nodedeletedisp, 'outbox'), (self, 'delete.outbox'), passthrough=2)
+        self.link((nodedeletedisp, 'xmpp.get'), (self, 'out.delete.get'), passthrough=2)
+        self.link((nodedeletedisp, 'xmpp.set'), (self, 'out.delete.set'), passthrough=2)
+        self.link((nodedeletedisp, 'xmpp.result'), (self, 'out.delete.result'), passthrough=2)
+        self.link((nodedeletedisp, 'xmpp.error'), (self, 'out.delete.error'), passthrough=2)
+        self.link((nodedeletedisp, 'unknown'), (self, 'unknown'), passthrough=2)
+        self.link((nodedeletedisp, 'log'), (self, 'log'), passthrough=2)
+        self.addChildren(nodedeletedisp)
+        nodedeletedisp.activate()
+
+        itempublishdisp = ItemPublicationDispatcher()
+        self.link((self, 'publish.inbox'), (itempublishdisp, 'inbox'), passthrough=1)
+        self.link((self, 'publish.forward'), (itempublishdisp, 'forward'), passthrough=1)
+        self.link((self, 'in.publish.get'), (itempublishdisp, 'forward'), passthrough=1)
+        self.link((self, 'in.publish.set'), (itempublishdisp, 'forward'), passthrough=1)
+        self.link((self, 'in.publish.result'), (itempublishdisp, 'forward'), passthrough=1)
+        self.link((self, 'in.publish.error'), (itempublishdisp, 'forward'), passthrough=1)
+        self.link((itempublishdisp, 'outbox'), (self, 'publish.outbox'), passthrough=2)
+        self.link((itempublishdisp, 'xmpp.get'), (self, 'out.publish.get'), passthrough=2)
+        self.link((itempublishdisp, 'xmpp.set'), (self, 'out.publish.set'), passthrough=2)
+        self.link((itempublishdisp, 'xmpp.result'), (self, 'out.publish.result'), passthrough=2)
+        self.link((itempublishdisp, 'xmpp.error'), (self, 'out.publish.error'), passthrough=2)
+        self.link((itempublishdisp, 'unknown'), (self, 'unknown'), passthrough=2)
+        self.link((itempublishdisp, 'log'), (self, 'log'), passthrough=2)
+        self.addChildren(itempublishdisp)
+        itempublishdisp.activate()
+
+        itemretractdisp = ItemDeletionDispatcher()
+        self.link((self, 'retract.inbox'), (itemretractdisp, 'inbox'), passthrough=1)
+        self.link((self, 'retract.forward'), (itemretractdisp, 'forward'), passthrough=1)
+        self.link((self, 'in.retract.get'), (itemretractdisp, 'forward'), passthrough=1)
+        self.link((self, 'in.retract.set'), (itemretractdisp, 'forward'), passthrough=1)
+        self.link((self, 'in.retract.result'), (itemretractdisp, 'forward'), passthrough=1)
+        self.link((self, 'in.retract.error'), (itemretractdisp, 'forward'), passthrough=1)
+        self.link((itemretractdisp, 'outbox'), (self, 'retract.outbox'), passthrough=2)
+        self.link((itemretractdisp, 'xmpp.get'), (self, 'out.retract.get'), passthrough=2)
+        self.link((itemretractdisp, 'xmpp.set'), (self, 'out.retract.set'), passthrough=2)
+        self.link((itemretractdisp, 'xmpp.result'), (self, 'out.retract.result'), passthrough=2)
+        self.link((itemretractdisp, 'xmpp.error'), (self, 'out.retract.error'), passthrough=2)
+        self.link((itemretractdisp, 'unknown'), (self, 'unknown'), passthrough=2)
+        self.link((itemretractdisp, 'log'), (self, 'log'), passthrough=2)
+        self.addChildren(itemretractdisp)
+        itemretractdisp.activate()
+
+        msgdisp = MessageEventDispatcher()
+        self.link((self, 'message.inbox'), (msgdisp, 'inbox'), passthrough=1)
+        self.link((msgdisp, 'xmpp.message'), (self, 'out.message'), passthrough=2)
+        self.link((msgdisp, 'log'), (self, 'log'), passthrough=2)
+        self.addChildren(msgdisp)
+        msgdisp.activate()
+
+        return 1
+
+    def main(self):
+        yield self.initComponents()
+
+        while 1:
+            if self.dataReady("control"):
+                mes = self.recv("control")
+                
+                if isinstance(mes, shutdownMicroprocess) or isinstance(mes, producerFinished):
+                    self.send(producerFinished(), "signal")
+                    break
+
             if not self.anyReady():
                 self.pause()
   

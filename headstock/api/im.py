@@ -23,6 +23,9 @@ class Body(object):
     def __repr__(self):
         return '<Body at %s>' % (hex(id(self)),)
 
+    def __str__(self):
+        return str(self.plain_body)
+
 class Subject(object):
     def __init__(self, content, lang=None):
         self.content = content
@@ -39,15 +42,10 @@ class Thread(object):
         return '<Thread at %s>' % (hex(id(self)),)
 
 class Event(object):
-    def __init__(self, offline=False, composing=False,
-                 delivered=False, displayed=False):
-        self.offline = offline
-        self.composing = composing
-        self.delivered = delivered
-        self.displayed = displayed
-
-    def __repr__(self):
-        return '<Event at %s>' % (hex(id(self)),)
+    offline = u"offline"
+    composing = u"composing"
+    delivered = u"delivered"
+    displayed = u"displayed"
 
 class Message(Entity):
     def __init__(self, from_jid, to_jid, type=u'normal', stanza_id=None, lang=None):
@@ -79,10 +77,15 @@ class Message(Entity):
                 continue
             
             if child.xml_ns == XMPP_EVENT_NS:
-                message.event = Event(child.has_child('offline', XMPP_EVENT_NS),
-                                      child.has_child('composing', XMPP_EVENT_NS),
-                                      child.has_child('delivered', XMPP_EVENT_NS),
-                                      child.has_child('displayed', XMPP_EVENT_NS))
+                if child.has_child('offline', XMPP_EVENT_NS):
+                    message.event = Event.offline
+                if child.has_child('composing', XMPP_EVENT_NS):
+                    message.event = Event.composing
+                if child.has_child('delivered', XMPP_EVENT_NS):
+                    message.event = Event.delivered
+                if child.has_child('displayed', XMPP_EVENT_NS):
+                    message.event = Event.displayed
+
             elif child.xml_ns == XMPP_CLIENT_NS:
                 if child.xml_name == 'body':
                     lang = child.get_attribute_value('lang')
@@ -138,16 +141,9 @@ class Message(Entity):
             E(u'thread', content=m.thread,
               namespace=XMPP_CLIENT_NS, parent=e)
 
+        x = E(u'x', namespace=XMPP_EVENT_NS, parent=e)
         if m.event:
-            x = E(u'x', namespace=XMPP_EVENT_NS, parent=e)
-            if m.event.offline:
-                E(u'offline', namespace=XMPP_EVENT_NS, parent=x)
-            elif m.event.composing:
-                E(u'composing', namespace=XMPP_EVENT_NS, parent=x)
-            elif m.event.delivered:
-                E(u'delivered', namespace=XMPP_EVENT_NS, parent=x)
-            elif m.event.displayed:
-                E(u'displayed', namespace=XMPP_EVENT_NS, parent=x)
+            E(m.event, namespace=XMPP_EVENT_NS, parent=x)
 
         for f in m.foreign:
             e.xml_children.append(f.e)

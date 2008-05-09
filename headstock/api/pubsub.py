@@ -10,7 +10,8 @@ from headstock.protocol.core.jid import JID
 from bridge import Element as E
 from bridge import Attribute as A
 from bridge.common import XMPP_CLIENT_NS, XMPP_STREAM_NS, \
-    XMPP_PUBSUB_NS, XMPP_PUBSUB_OWNER_NS, XMPP_PUBSUB_NODE_CONFIG_NS
+    XMPP_PUBSUB_NS, XMPP_PUBSUB_OWNER_NS, XMPP_PUBSUB_NODE_CONFIG_NS,\
+    XMPP_PUBSUB_EVENT_NS
 
 class Configure(object):
     def __init__(self, data=None):
@@ -29,9 +30,10 @@ class Configure(object):
     create_leaf_node_whitelist = classmethod(create_leaf_node_whitelist)
 
 class Item(object):
-    def __init__(self, id=None, payload=None):
+    def __init__(self, id=None, payload=None, eventType=None):
         self.id = id
         self.payload = payload
+        self.event = eventType
 
     def __repr__(self):
         return '<Item "%s" at %s>' % (self.id or '', hex(id(self)),)
@@ -227,13 +229,27 @@ class Node(Entity):
         return node
         
     
-class Items(object):
-    def __init__(self, max_items=None, node=None, subid=None):
-        self.max_items = max_items
-        self.node = node
-        self.subid = subid
+class Message(Entity):
+    def __init__(self, from_jid, to_jid):
+        Entity.__init__(self, from_jid, to_jid) 
+        self.node_name = None
         self.items = []
-        
-    def __repr__(self):
-        return '<Items "%s" on (%s) at %s>' % (self.subid or '', self.node, hex(id(self)),)
-    
+
+    @staticmethod
+    def from_element(e):
+        msg = Message(JID.parse(e.get_attribute_value('from')),
+                      JID.parse(e.get_attribute_value('to')))
+
+        for c in e.xml_children:
+            if c.xml_ns == XMPP_PUBSUB_EVENT_NS: # x or event
+                for i in c.xml_children:
+                    if i.xml_ns == XMPP_PUBSUB_EVENT_NS: # items
+                        msg.node_name = i.get_attribute_value('node')
+                        for t in i.xml_children: # item
+                            payload = None
+                            if t.xml_children:
+                                payload = t.xml_children[0]
+                            msg.items.append(Item(id=t.get_attribute_value('id'),
+                                                  payload=payload, eventType=t.xml_name))
+
+        return msg

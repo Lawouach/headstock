@@ -93,7 +93,6 @@ class Roster(Entity):
 
     @staticmethod
     def from_element(e):
-        print e.xml()
         r = Roster(JID.parse(e.xml_parent.get_attribute_value('from')),
                    JID.parse(e.xml_parent.get_attribute_value('to')))
         for child in e.xml_children:
