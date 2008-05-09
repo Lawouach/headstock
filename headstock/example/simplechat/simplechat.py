@@ -1,4 +1,29 @@
 # -*- coding: utf-8 -*-
+"""
+This module is a simple XMPP chat client demonstrating the use of headstock.
+Many Kamaelia components are created to manage different XMPP kind of stanzas.
+
+* RosterHandler:
+  * querying the server for the roster list
+  * if supported by server, asking for the last activity of each contact
+
+* DummyMessageHandler:
+  * sending a message typed into the console window
+  * printing to the console any received messages
+
+* DiscoHandler: 
+  * querying for the supported features by the server
+  * dispatching the result of the previous query to components interested in that event
+
+* ActivityHandler:
+  * dispatching to the RosterHandler the fact the server supports the feature
+
+
+The actual XMPP client is the Client component that sets up the different
+dispatchers and handlers involved by liking each inbox to the expected outbox and
+vcie versa.
+
+"""
 from Axon.Component import component
 from Kamaelia.Chassis.Graphline import Graphline
 from Kamaelia.Chassis.Pipeline import Pipeline
@@ -327,26 +352,49 @@ class Client(component):
         self.send('</stream:stream>', 'outbox') 
 
     def setup(self):
-        Backplane("LOGGER").activate()
+        # Backplanes are like a global entry points that
+        # can be accessible both for publishing and
+        # recieving data. 
+        # In other words, a component interested
+        # in advertising to many other components that
+        # something happened may link one of its outbox
+        # to a PublishTo component's inbox.
+        # A component wishing to receive that piece of
+        # information will link one of its inbox
+        # to the SubscribeTo component's outbox.
+        # This helps greatly to make components more
+        # loosely connected but also allows for some data
+        # to be dispatched at once to many (such as when
+        # the server returns the per-session JID that
+        # is of interest for most other components).
         Backplane("CONSOLE").activate()
         Backplane("JID").activate()
+        # Used to inform components that the session is now active
         Backplane("BOUND").activate()
+        # Used to inform components of the supported features
         Backplane("DISCO_FEAT").activate()
 
         sub = SubscribeTo("JID")
-        sub.activate()
         self.link((sub, 'outbox'), (self, 'jid'))
+        self.addChildren(sub)
+        sub.activate()
 
+        # We pipe everything typed into the console
+        # directly to the console backplane so that
+        # every components subscribed to the console
+        # backplane inbox will get the typed data and
+        # will decide it it's of concern or not.
         Pipeline(ConsoleReader(), PublishTo('CONSOLE')).activate()
-        Pipeline(SubscribeTo("LOGGER"), Logger(path=None, stdout=True)).activate()
 
+        # Add two outboxes ro the ClientSteam to support specific features.
         ClientStream.Outboxes["%s.query" % XMPP_LAST_NS] = "Activity"
         ClientStream.Outboxes["%s.query" % XMPP_DISCO_INFO_NS] = "Discovery"
+
         self.client = ClientStream(self.jid, self.passwordLookup, use_tls=self.usetls)
         
         self.graph = Graphline(client = self,
                                console = SubscribeTo('CONSOLE'),
-                               logger = PublishTo("LOGGER"),
+                               logger = Logger(path=None, stdout=True),
                                tcp = TCPClient(self.server, self.port),
                                xmlparser = XMLIncrParser(),
                                xmpp = self.client,
