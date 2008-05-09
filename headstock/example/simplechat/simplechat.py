@@ -119,6 +119,7 @@ class RosterHandler(component):
 class DummyMessageHandler(component):
     Inboxes = {"inbox"    : "headstock.api.contact.Message instance received from a peer"\
                    "or the string input in the console",
+               "jid"      : "headstock.api.jid.JID instance received from the server",
                "control"  : "stops the component"}
     
     Outboxes = {"outbox"  : "headstock.api.im.Message to send to the client",
@@ -214,8 +215,8 @@ class DiscoHandler(component):
 
         pub = PublishTo("DISCO_FEAT")
         self.link((self, 'features-announce'), (pub, 'inbox'))
-        self.addChildren(sub)
-        sub.activate()
+        self.addChildren(pub)
+        pub.activate()
 
         sub = SubscribeTo("BOUND")
         self.link((sub, 'outbox'), (self, 'initiate'))
@@ -286,6 +287,8 @@ class ActivityHandler(component):
         return 1
 
     def main(self):
+        yield self.initComponents()
+
         while 1:
             if self.dataReady("control"):
                 mes = self.recv("control")
@@ -401,7 +404,7 @@ class Client(component):
                                streamerr = StreamError(),
                                saslerr = SaslError(),
                                discohandler = DiscoHandler(self.jid, self.domain),
-                               activityhandler=ActivityHandler(),
+                               activityhandler = ActivityHandler(),
                                rosterhandler = RosterHandler(self.jid),
                                msgdummyhandler = DummyMessageHandler(),
                                presencedisp = PresenceDispatcher(),
