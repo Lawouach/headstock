@@ -34,7 +34,7 @@ from Kamaelia.Util.Console import ConsoleReader
 from Axon.Ipc import shutdownMicroprocess, producerFinished
     
 from headstock.protocol.core.stream import ClientStream, StreamError, SaslError
-from headstock.protocol.core.presence import PresenceDispatcher, PresenceSubscriber
+from headstock.protocol.core.presence import PresenceDispatcher
 from headstock.protocol.core.roster import RosterDispatcher, RosterNull
 from headstock.protocol.core.message import MessageDispatcher, MessageEchoer
 from headstock.protocol.extension.activity import ActivityDispatcher
@@ -44,7 +44,8 @@ from headstock.protocol.core.jid import JID
 from headstock.lib.parser import XMLIncrParser
 from headstock.lib.logger import Logger
 from headstock.api.im import Message, Body, Event
-from headstock.api.contact import Presence
+from headstock.api.contact import Presence, Roster, Item
+from headstock.api import Entity
 from headstock.api.activity import Activity
 from headstock.lib.utils import generate_unique
 
@@ -57,12 +58,14 @@ __all__ = ['Client']
 class RosterHandler(component):    
     Inboxes = {"inbox"        : "headstock.api.contact.Roster instance",
                "control"      : "stops the component",
+               "pushed"       : "roster stanzas pushed by the server",
                "jid"          : "headstock.api.jid.JID instance received from the server",
                "ask-activity" : "request activity status to the server for each roster contact"}
     
     Outboxes = {"outbox"      : "UNUSED",
                 "signal"      : "Shutdown signal",
                 "message"     : "Message to send",
+                "result"      : "", 
                 "activity"    : "headstock.api.activity.Activity instance to send to the server"}
 
     def __init__(self, from_jid):
@@ -95,6 +98,12 @@ class RosterHandler(component):
             if self.dataReady("jid"):
                 self.from_jid = self.recv('jid')
             
+            if self.dataReady("pushed"):
+                roster = self.recv('pushed')
+                for nodeid in roster.items:
+                    self.send(Roster(from_jid=self.from_jid, to_jid=nodeid,
+                                     type=u'result', stanza_id=generate_unique()), 'result')
+                
             if self.dataReady("inbox"):
                 roster = self.recv("inbox")
                 self.roster = roster
@@ -308,6 +317,75 @@ class ActivityHandler(component):
   
             yield 1
 
+class PresenceHandler(component):
+    Inboxes = {"inbox"       : "headstock.api.contact.Presence instance",
+               "control"     : "Shutdown the client stream",
+               "subscribe"   : "",
+               "unsubscribe" : "",}
+    
+    Outboxes = {"outbox" : "headstock.api.contact.Presence instance to return to the server",
+                "signal" : "Shutdown signal",
+                "roster" : "",
+                "log"    : "log",}
+    
+    def __init__(self):
+        super(PresenceHandler, self).__init__()
+
+    def main(self):
+        while 1:
+            if self.dataReady("control"):
+                mes = self.recv("control")
+                
+                if isinstance(mes, shutdownMicroprocess) or isinstance(mes, producerFinished):
+                    self.send(producerFinished(), "signal")
+                    break
+
+            if self.dataReady("subscribe"):
+                p = self.recv("subscribe")
+                p.swap_jids()
+                
+                # Automatically accept any subscription requests
+                p = Presence(from_jid=p.from_jid, to_jid=unicode(p.to_jid),
+                             type=u'subscribed')
+                self.send(p, "outbox")
+                
+                # Automatically subscribe in return as well
+                p = Presence(from_jid=p.from_jid, to_jid=unicode(p.to_jid),
+                             type=u'subscribe')
+                self.send(p, "outbox")
+                
+            if self.dataReady("unsubscribe"):
+                p = self.recv("unsubscribe")
+                p.swap_jids()
+                
+                # We stop our subscription to the other user
+                p = Presence(from_jid=p.from_jid, to_jid=unicode(p.to_jid),
+                             type=u'unsubscribed')
+                self.send(p, "outbox")
+                
+                # We stop the other user's subscription
+                p = Presence(from_jid=p.from_jid, to_jid=unicode(p.to_jid),
+                             type=u'unsubscribe')
+                self.send(p, "outbox")
+
+                # We remove this user from our roster list
+                r = Roster(from_jid=p.from_jid, type=u'set')
+                i = Item(p.to_jid)
+                i.subscription = u'remove'
+                r.items[unicode(p.to_jid)] = i
+                self.send(r, 'roster')
+
+                # We tell the other user we're not available anymore
+                p = Presence(from_jid=p.from_jid, to_jid=unicode(p.to_jid),
+                             type=u'unavailable')
+                self.send(p, "outbox")
+                
+            if not self.anyReady():
+                self.pause()
+  
+            yield 1
+    
+
 class Client(component):
     Inboxes = {"inbox"    : "",
                "jid": "",
@@ -335,22 +413,8 @@ class Client(component):
     def passwordLookup(self, jid):
         return self.password
 
-    def subscription_requested(self, p):
-        # If you don't accept the subscription request, simply return None
-        # otherwise returns "p"
-
-        # Note that you could for instance call your database, or ask the
-        # user, etc.
-        print "# %s wants to subscribe to you. Enter 'yes' to allow, 'no' otherwise" % str(p.from_jid)
-        allow = raw_input(">>> ")
-        if allow == 'yes':
-            p.swap_jids()
-            return p
-
     def shutdown(self):
-        p = Presence(self.jid)
-        p.subscription = u'unavailable'
-        self.send(Presence.to_element(p), 'forward')
+        self.send(Presence.to_element(Presence(self.jid, type=u'unavailable')), 'forward')
         self.send('OUTGOING : </stream:stream>', 'log')
         self.send('</stream:stream>', 'outbox') 
 
@@ -407,8 +471,8 @@ class Client(component):
                                activityhandler = ActivityHandler(),
                                rosterhandler = RosterHandler(self.jid),
                                msgdummyhandler = DummyMessageHandler(),
+                               presencehandler = PresenceHandler(),
                                presencedisp = PresenceDispatcher(),
-                               presencesub = PresenceSubscriber(self.subscription_requested),
                                rosterdisp = RosterDispatcher(),
                                msgdisp = MessageDispatcher(),
                                discodisp = DiscoveryDispatcher(),
@@ -435,13 +499,19 @@ class Client(component):
                                            # Presence 
                                            ("xmpp", "%s.presence" % XMPP_CLIENT_NS): ("presencedisp", "inbox"),
                                            ("presencedisp", "log"): ('logger', "inbox"),
-                                           ("presencedisp", "xmpp.subscribe"): ("presencesub", "inbox"),
-                                           ("presencesub", "outbox"): ("xmpp", "forward"),
+                                           ("presencedisp", "xmpp.subscribe"): ("presencehandler", "subscribe"),
+                                           ("presencedisp", "xmpp.unsubscribe"): ("presencehandler", "unsubscribe"),
+                                           ("presencehandler", "outbox"): ("presencedisp", "forward"),
+                                           ("presencehandler", "roster"): ("rosterdisp", "forward"),
+                                           ("presencedisp", "outbox"): ("xmpp", "forward"),
 
                                            # Roster
                                            ("xmpp", "%s.query" % XMPP_ROSTER_NS): ("rosterdisp", "inbox"),
                                            ("rosterdisp", "log"): ('logger', "inbox"),
+                                           ('rosterdisp', 'xmpp.set'): ('rosterhandler', 'pushed'),
                                            ('rosterdisp', 'xmpp.result'): ('rosterhandler', 'inbox'),
+                                           ('rosterhandler', 'result'): ('rosterdisp', 'forward'),
+                                           ("rosterdisp", "outbox"): ("xmpp", "forward"),
 
                                            # Discovery
                                            ("xmpp", "%s.query" % XMPP_DISCO_INFO_NS): ("discodisp", "features.inbox"),

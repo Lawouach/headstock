@@ -14,12 +14,11 @@ ONLINE = 1
 __all__ = ['Presence', 'Roster', 'Item']
 
 class Presence(Entity):
-    def __init__(self, from_jid, to_jid=None):
-        Entity.__init__(self, from_jid, to_jid)
+    def __init__(self, from_jid, to_jid=None, type=u'none', stanza_id=None):
+        Entity.__init__(self, from_jid, to_jid, type=type, stanza_id=stanza_id)
         self.status = None
         self.show = None
         self.priority = 0
-        self.subscription = u'none'
         self.foreign = []
 
     def __repr__(self):
@@ -28,8 +27,8 @@ class Presence(Entity):
     @staticmethod
     def from_element(e):
         p = Presence(JID.parse(e.get_attribute_value('from')),
-                     JID.parse(e.get_attribute_value('to')))
-        p.subscription = e.get_attribute_value('type', None)
+                     JID.parse(e.get_attribute_value('to')),
+                     e.get_attribute_value('type', None))
 
         for child in e.xml_children:
             if child.xml_ns == XMPP_CLIENT_NS:
@@ -51,8 +50,8 @@ class Presence(Entity):
             attrs[u'from'] = unicode(p.from_jid)
         if p.to_jid:
             attrs[u'to'] = unicode(p.to_jid)
-        if p.subscription:
-            attrs[u'type'] = p.subscription
+        if p.type:
+            attrs[u'type'] = p.type
         e = E(u'presence', attributes=attrs, namespace=XMPP_CLIENT_NS)
 
         if p.show:
@@ -84,8 +83,8 @@ class Item(object):
         return '<Item %s (%d) at %s>' % (str(self.jid), self.availability, hex(id(self)))
 
 class Roster(Entity):
-    def __init__(self, from_jid, to_jid):
-        Entity.__init__(self, from_jid, to_jid)
+    def __init__(self, from_jid, to_jid=None, type=u'get', stanza_id=None):
+        Entity.__init__(self, from_jid, to_jid, type=type, stanza_id=stanza_id)
         self.items = {}
 
     def __repr__(self):
@@ -108,3 +107,25 @@ class Roster(Entity):
                 r.items[nodeid] = item
                 
         return r
+
+    @staticmethod
+    def to_element(e):
+        iq = Entity.to_element(e)
+        if e.type != 'result':
+            query = E(u'query', namespace=XMPP_ROSTER_NS, parent=iq)
+            for item_id in e.items:
+                item = e.items[item_id]
+                attr = {u'jid': unicode(item.jid)}
+                if item.subscription:
+                    attr[u'subscription'] = item.subscription
+                if item.name:
+                    attr[u'name'] = item.name
+                if item.language:
+                    attr[u'language'] = item.language
+                i = E(u'item', namespace=XMPP_ROSTER_NS,
+                      attributes=attr, parent=query)
+                for group in item.groups:
+                    E(u'group', namespace=XMPP_ROSTER_NS,
+                      content=group, parent=i)
+        return iq
+        
