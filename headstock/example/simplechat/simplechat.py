@@ -343,7 +343,7 @@ class PresenceHandler(component):
             if self.dataReady("subscribe"):
                 p = self.recv("subscribe")
                 p.swap_jids()
-                
+
                 # Automatically accept any subscription requests
                 p = Presence(from_jid=p.from_jid, to_jid=unicode(p.to_jid),
                              type=u'subscribed')
