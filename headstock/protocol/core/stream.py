@@ -13,7 +13,7 @@ from Axon.Ipc import shutdownMicroprocess, producerFinished
 from bridge import Element as E
 from bridge import Attribute as A
 from bridge.common import XML_NS, XML_PREFIX, XMPP_CLIENT_NS, XMPP_STREAM_NS, XMPP_STREAM_PREFIX,\
-     XMPP_SASL_NS, XMPP_SASL_PREFIX, XMPP_AUTH_NS, XMPP_TLS_NS, XMPP_CLIENT_NS, \
+     XMPP_SASL_NS, XMPP_SASL_PREFIX, XMPP_AUTH_NS, XMPP_TLS_NS, XMPP_CLIENT_NS, XMPP_IBR_NS, \
      XMPP_BIND_NS, XMPP_SESSION_NS, XMPP_DISCO_ITEMS_NS, XMPP_ROSTER_NS, xmpp_bind_as_attr
 from bridge.common import ANY_NAMESPACE
 
@@ -25,6 +25,7 @@ from headstock.lib.auth.plain import generate_credential, validate_credentials
 from headstock.lib.auth.gaa import perform_authentication
 from headstock.lib.auth.digest import challenge_to_dict, compute_digest_response
 from headstock.lib.utils import generate_unique, extract_from_stanza
+from headstock.api.stream import StreamFeatures
 
 __all__ = ['ClientStream', 'StreamError', 'SaslError']
 
@@ -112,9 +113,10 @@ class SaslError(component):
             yield 1
             
 class ClientStream(component):
-    Inboxes = {"inbox"   : "bridge.Element instance",
-               "control" : "Shutdown the client stream",
-               "forward": "bridge.Element instance to be sent out to the client",
+    Inboxes = {"inbox"     : "bridge.Element instance",
+               "control"   : "Shutdown the client stream",
+               "forward"   : "bridge.Element instance to be sent out to the client",
+               "auth"      : "Perform authentication",
                "proceedtls": "",
                "tlssuccess": "",
                "tlsfailure": ""}
@@ -126,6 +128,7 @@ class ClientStream(component):
                 "error"  : "bridge.Element instance",
                 "starttls": "",
                 "jid"    : "",
+                "features": "",
                 "bound"  : "indicates the client has been successfully bound to an XMPP server",
                 "terminated": "Indicates the stream has been terminated by the peer",
                 "unhandled"    : "Contains any bridge.Element which namespace was not handled by a dedicated component",
@@ -194,14 +197,13 @@ class ClientStream(component):
     def _handle_features(self, e):
         self.log(e)
         self.status = CONNECTED
-        mechanisms = e.get_child('mechanisms', ns=XMPP_SASL_NS)
-        support_tls = e.get_child('starttls', ns=XMPP_TLS_NS)
-        if support_tls and self.use_tls:
+        feat = StreamFeatures.from_element(e)
+        if feat.tls and self.use_tls:
             tls = E(u'starttls', namespace=XMPP_TLS_NS)
             self.propagate(element=tls)
-        elif mechanisms:
-            self._handle_mechanisms(mechanisms)
-            
+        elif feat.mechanisms:
+            self.send(feat, 'features')
+                
     def _handle_tls(self):
         self._reset_stream_header(omit_decl=True)
 
@@ -224,25 +226,23 @@ class ClientStream(component):
         response = E(u'response', content=response_token, namespace=XMPP_SASL_NS)
         self.propagate(element=response)
 
-    def _handle_mechanisms(self, e):
-        self.log(e)
-        mechanisms = [m.xml_text for m in e.xml_children if m.xml_name == 'mechanism']
+    def _handle_auth(self, feat):
         mechanism = None
 
         # Always favour DIGEST-MD5 if supported by receiving entity
-        if u'DIGEST-MD5' in mechanisms:
+        if u'DIGEST-MD5' in feat.mechanisms:
             mechanism = u'DIGEST-MD5'
             token = None
-        elif u'PLAIN' in mechanisms:
+        elif u'PLAIN' in feat.mechanisms:
             mechanism = u'PLAIN'
             email = '%s@%s' % (self.jid.node, self.jid.domain)
             password = self.password_lookup(self.jid)
             token = generate_credential(email, self.jid.node, password)
-        elif u'X-GOOGLE-TOKEN' in mechanisms:
+        elif u'X-GOOGLE-TOKEN' in feat.mechanisms:
             mechanism = u'X-GOOGLE-TOKEN'
             password = self.password_lookup(self.jid)
             token = perform_authentication(self.jid.node, password)
-        elif u'ANONYMOUS' in mechanisms:            
+        elif u'ANONYMOUS' in feat.mechanisms:            
             mechanism = u'ANONYMOUS'
             token = None
         else:
@@ -320,6 +320,10 @@ class ClientStream(component):
                 self._handle_tls()
                 yield 1
 
+            if self.dataReady("auth"):
+                feat = self.recv('auth')
+                self._handle_auth(feat)
+
             if self.dataReady("forward"):
                 # The forward box is used by XMPP components to drop a
                 # bridge.Element instance that should be passed onto the
@@ -353,6 +357,8 @@ class ClientStream(component):
                     elif (e.xml_ns == XMPP_BIND_NS) and (e.xml_name == 'jid'):
                         self._handle_jid(e)
                         self.send('', 'bound')
+                    elif (e.xml_ns == XMPP_IBR_NS) and (e.xml_name == 'query'):
+                        self.send(e, "%s.%s" % (e.xml_ns, e.xml_name))
                 elif (e.xml_ns == XMPP_STREAM_NS) and (e.xml_name == 'error'):
                     self.send(e, "error")
                 elif (e.xml_ns == XMPP_SASL_NS) and (e.xml_name == 'failure'):

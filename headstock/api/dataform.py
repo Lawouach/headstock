@@ -10,6 +10,7 @@ class Data(object):
     def __init__(self, form_type, reported=False):
         self.type = form_type
         self.reported = reported
+        self.instructions = None
         self.title = None
         self.fields = []
         self.items = []
@@ -22,11 +23,16 @@ class Data(object):
             if field.var == var:
                 return field
     
-    def from_element(cls, e):
-        d = Data(unicode(e.get_attribute('type')))
+    @staticmethod
+    def from_element(e):
+        d = Data(e.get_attribute_value('type'))
         title = e.get_child('title', e.xml_ns)
         if title:
             d.title = title.xml_text
+
+        instructions = e.get_child('instructions', e.xml_ns)
+        if instructions:
+            d.instructions = instructions.xml_text
 
         fields = e.get_children('field', e.xml_ns)
         for field in fields:
@@ -37,14 +43,15 @@ class Data(object):
             d.items.append(Item.from_element(item))
 
         return d
-    from_element = classmethod(from_element)
 
-    def to_element(cls, d, parent=None):
+    @staticmethod
+    def to_element(d, parent=None):
         x = E(u'x', attributes={u'type': d.type},
               namespace=XMPP_DATA_FORM_NS, parent=parent)
         for field in d.fields:
             Field.to_element(field, parent=x)
-    to_element = classmethod(to_element)
+        for item in d.items:
+            Item.to_element(item, parent=x)
                    
 class Field(object):
     def __init__(self, required=False, field_type=u'text-single', var=None, values=None):
@@ -59,18 +66,15 @@ class Field(object):
     def __repr__(self):
         return '<Field "%s" (%s) at %s>' % (self.type or '', self.var or '', hex(id(self)))
     
-    def from_element(cls, e):
-        f = Field()
-        f.type = e.get_attribute('type')
-        if f.type: f.type = unicode(f.type)
-        f.var = e.get_attribute('var')
-        if f.var: f.var = unicode(f.var)
-        f.label = e.get_attribute('label')
-        if f.label: f.label = unicode(f.label)
-        required = e.get_child('required')
+    @staticmethod
+    def from_element(e):
+        f = Field(field_type=e.get_attribute_value('type'),
+                  var=e.get_attribute_value('var'))
+        f.label = e.get_attribute_value('label')
+        required = e.get_child('required', e.xml_ns)
         if required and required == 'true':
             f.required = True
-        desc = e.get_child('desc')
+        desc = e.get_child('desc', e.xml_ns)
         if desc:
             f.desc = desc.xml_text
 
@@ -83,9 +87,9 @@ class Field(object):
             f.values.append(value.xml_text)
 
         return f
-    from_element = classmethod(from_element)
 
-    def to_element(cls, field, parent=None):
+    @staticmethod
+    def to_element(field, parent=None):
         attrs = {}
         if field.var: attrs[u'var'] = field.var
         if field.type: attrs[u'type'] = field.type
@@ -94,7 +98,6 @@ class Field(object):
         for value in field.values:
             E(u'value', content=value,
               namespace=XMPP_DATA_FORM_NS, parent=f)
-    to_element = classmethod(to_element)
     
 class Option(object):
     def __init__(self, value, label=None):
@@ -104,15 +107,21 @@ class Option(object):
     def __repr__(self):
         return '<Option "%s" at %s>' % (self.value, hex(id(self)))
     
-    def from_element(cls, e):
-        o = Option()
-        o.value = e.get_child('value').xml_text
-        label = e.get_child('label')
-        if label:
-            o.label = label.xml_text
+    @staticmethod
+    def from_element(e):
+        o = Option(e.get_child('value', e.xml_ns).xml_text,
+                   e.get_attribute_value('label'))
         return o
-    from_element = classmethod(from_element)
 
+    @staticmethod
+    def to_element(e, parent=None):
+        option = E(u'option', namespace=XMPP_DATA_FORM_NS, 
+                   attributes={u'label': e.label}, parent=parent)
+        E(u'value', namespace=XMPP_DATA_FORM_NS, 
+          content=e.value, parent=option)
+        return option
+
+        
 class Item(object):
     def __init__(self):
         self.fields = []
@@ -120,11 +129,18 @@ class Item(object):
     def __repr__(self):
         return '<Item at %s>' % (hex(id(self)),)
     
-    def from_element(cls, e):
+    @staticmethod
+    def from_element(e):
         i = Item()
         fields = e.get_children('field', e.xml_ns)
         for field in fields:
             i.fields.append(Field.from_element(field))
 
         return i
-    from_element = classmethod(from_element)
+
+    @staticmethod
+    def to_element(e, parent=None):
+        item = E(u'item', namespace=XMPP_DATA_FORM_NS, parent=parent)
+        for field in e.fields:
+            Field.to_element(field, parent=item)
+        return item

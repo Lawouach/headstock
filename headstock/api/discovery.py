@@ -1,6 +1,4 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
-
 
 from headstock.lib.utils import generate_unique
 from headstock.protocol.core.jid import JID

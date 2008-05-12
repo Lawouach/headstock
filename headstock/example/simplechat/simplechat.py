@@ -37,6 +37,7 @@ from headstock.protocol.core.stream import ClientStream, StreamError, SaslError
 from headstock.protocol.core.presence import PresenceDispatcher
 from headstock.protocol.core.roster import RosterDispatcher, RosterNull
 from headstock.protocol.core.message import MessageDispatcher, MessageEchoer
+from headstock.protocol.extension.register import RegisterDispatcher
 from headstock.protocol.extension.activity import ActivityDispatcher
 from headstock.protocol.extension.discovery import DiscoveryDispatcher
 from headstock.protocol.extension.discovery import FeaturesDiscovery
@@ -47,11 +48,12 @@ from headstock.api.im import Message, Body, Event
 from headstock.api.contact import Presence, Roster, Item
 from headstock.api import Entity
 from headstock.api.activity import Activity
+from headstock.api.registration import Registration
 from headstock.lib.utils import generate_unique
 
 from bridge import Element as E
 from bridge.common import XMPP_CLIENT_NS, XMPP_ROSTER_NS, \
-    XMPP_LAST_NS, XMPP_DISCO_INFO_NS
+    XMPP_LAST_NS, XMPP_DISCO_INFO_NS, XMPP_IBR_NS
 
 __all__ = ['Client']
 
@@ -386,22 +388,72 @@ class PresenceHandler(component):
             yield 1
     
 
+class RegistrationHandler(component):
+    Inboxes = {"inbox"   : "headstock.api.registration.Registration",
+               "error"   : "headstock.api.registration.Registration",
+               "control" : "Shutdown the client stream",}
+    
+    Outboxes = {"outbox" : "headstock.api.registration.Registration",
+                "signal" : "Shutdown signal",
+                "log"    : "log",}
+    
+    def __init__(self, username, password):
+        super(RegistrationHandler, self).__init__()
+        self.username = username
+        self.password = password
+        self.registration_id = None
+
+    def main(self):
+        while 1:
+            if self.dataReady("control"):
+                mes = self.recv("control")
+                
+                if isinstance(mes, shutdownMicroprocess) or isinstance(mes, producerFinished):
+                    self.send(producerFinished(), "signal")
+                    break
+
+            if self.dataReady("inbox"):
+                r = self.recv('inbox')
+                if r.registered:
+                    print "'%s' is already a registered username." % self.username
+                elif self.registration_id == r.stanza_id:
+                    print "'%s' is now a registered user."\
+                        "Please restart the client without the register flag." % self.username
+                else:
+                    if 'username' in r.infos and 'password' in r.infos:
+                        self.registration_id = generate_unique()
+                        r = Registration(type=u'set', stanza_id=self.registration_id)
+                        r.infos[u'username'] = self.username
+                        r.infos[u'password'] = self.password
+                        self.send(r, 'outbox')
+                
+            if self.dataReady("error"):
+                r = self.recv('error')
+                print r.error
+
+            if not self.anyReady():
+                self.pause()
+  
+            yield 1
+
 class Client(component):
-    Inboxes = {"inbox"    : "",
-               "jid": "",
-               "control"  : "Shutdown the client stream",
-               }
+    Inboxes = {"inbox"      : "",
+               "jid"        : "",
+               "streamfeat" : "",
+               "control"    : "Shutdown the client stream"}
     
     Outboxes = {"outbox"  : "",
                 "forward" : "",
                 "log"     : "",
+                "doauth"  : "",
                 "signal"  : "Shutdown signal",
-                }
+                "doregistration" : ""}
 
     def __init__(self, username, password, domain, resource=u"headstock-client1", 
-                 server=u'localhost', port=5222, usetls=False):
+                 server=u'localhost', port=5222, usetls=False, register=False):
         super(Client, self).__init__() 
         self.jid = JID(username, domain, resource)
+        self.username = username
         self.password = password
         self.server = server
         self.port = port
@@ -409,12 +461,17 @@ class Client(component):
         self.graph = None
         self.domain = domain
         self.usetls = usetls
+        self.register = register
 
     def passwordLookup(self, jid):
         return self.password
 
     def shutdown(self):
         self.send(Presence.to_element(Presence(self.jid, type=u'unavailable')), 'forward')
+        self.send('OUTGOING : </stream:stream>', 'log')
+        self.send('</stream:stream>', 'outbox') 
+
+    def abort(self):
         self.send('OUTGOING : </stream:stream>', 'log')
         self.send('</stream:stream>', 'outbox') 
 
@@ -453,7 +510,8 @@ class Client(component):
         # will decide it it's of concern or not.
         Pipeline(ConsoleReader(), PublishTo('CONSOLE')).activate()
 
-        # Add two outboxes ro the ClientSteam to support specific features.
+        # Add two outboxes ro the ClientSteam to support specific extensions.
+        ClientStream.Outboxes["%s.query" % XMPP_IBR_NS] = "Registration"
         ClientStream.Outboxes["%s.query" % XMPP_LAST_NS] = "Activity"
         ClientStream.Outboxes["%s.query" % XMPP_DISCO_INFO_NS] = "Discovery"
 
@@ -470,6 +528,7 @@ class Client(component):
                                discohandler = DiscoHandler(self.jid, self.domain),
                                activityhandler = ActivityHandler(),
                                rosterhandler = RosterHandler(self.jid),
+                               registerhandler = RegistrationHandler(self.username, self.password),
                                msgdummyhandler = DummyMessageHandler(),
                                presencehandler = PresenceHandler(),
                                presencedisp = PresenceDispatcher(),
@@ -477,6 +536,7 @@ class Client(component):
                                msgdisp = MessageDispatcher(),
                                discodisp = DiscoveryDispatcher(),
                                activitydisp = ActivityDispatcher(),
+                               registerdisp = RegisterDispatcher(),
                                pjid = PublishTo("JID"),
                                pbound = PublishTo("BOUND"),
 
@@ -495,7 +555,18 @@ class Client(component):
                                            ("xmpp", "log"): ("logger", "inbox"),
                                            ("xmpp", "jid"): ("pjid", "inbox"),
                                            ("xmpp", "bound"): ("pbound", "inbox"),
-
+                                           ("xmpp", "features"): ("client", "streamfeat"),
+                                           ("client", "doauth"): ("xmpp", "auth"),
+                                           
+                                           # Registration
+                                           ("xmpp", "%s.query" % XMPP_IBR_NS): ("registerdisp", "inbox"),
+                                           ("registerdisp", "log"): ('logger', "inbox"),
+                                           ("registerdisp", "xmpp.error"): ("registerhandler", "error"),
+                                           ("registerdisp", "xmpp.result"): ("registerhandler", "inbox"),
+                                           ("registerhandler", "outbox"): ("registerdisp", "forward"),
+                                           ("client", "doregistration"): ("registerdisp", "forward"),
+                                           ("registerdisp", "outbox"): ("xmpp", "forward"),
+                                           
                                            # Presence 
                                            ("xmpp", "%s.presence" % XMPP_CLIENT_NS): ("presencedisp", "inbox"),
                                            ("presencedisp", "log"): ('logger', "inbox"),
@@ -561,6 +632,16 @@ class Client(component):
                     yield 1
                     break
 
+            if self.dataReady("streamfeat"):
+                feat = self.recv('streamfeat')
+                if feat.register and self.register:
+                    self.send(Registration(), 'doregistration')
+                elif self.register and not feat.register:
+                    print "The server does not support in-band registration. Closing connection."
+                    self.abort()
+                else:
+                    self.send(feat, 'doauth')
+                
             if self.dataReady("jid"):
                 self.jid = self.recv('jid')
                 
@@ -586,8 +667,13 @@ if __name__ == '__main__':
         parser.set_defaults(address='localhost:5222')
         parser.add_option("-u", "--username", dest="username",
                           help="XMPP username", action="store")
+        parser.set_defaults(username=None)
         parser.add_option("-p", "--password", action="store", dest="password",
                           help="XMPP password")
+        parser.set_defaults(password=None)
+        parser.add_option("-r", "--register", action="store_true", dest="register",
+                          help="Register the user if the server supports it")
+        parser.set_defaults(register=False)
         parser.add_option("-t", "--usetls", dest="usetls", action="store_true",
                            help="Use TLS")
         parser.set_defaults(usetls=False)
@@ -602,7 +688,8 @@ if __name__ == '__main__':
                         unicode(options.password), 
                         unicode(options.domain),
                         server=host, port=int(port),
-                        usetls=options.usetls)
+                        usetls=options.usetls,
+                        register=options.register)
         client.run()
 
     run()
