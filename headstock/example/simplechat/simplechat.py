@@ -18,6 +18,8 @@ Many Kamaelia components are created to manage different XMPP kind of stanzas.
 * ActivityHandler:
   * dispatching to the RosterHandler the fact the server supports the feature
 
+* RegisterHandler:
+  * registring a new user using in-band registration if supported
 
 The actual XMPP client is the Client component that sets up the different
 dispatchers and handlers involved by liking each inbox to the expected outbox and
