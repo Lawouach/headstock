@@ -4,8 +4,8 @@
 from Axon.Component import component
 from Axon.Ipc import shutdownMicroprocess, producerFinished
 
-from headstock.protocol.core.stanza import Stanza
-from headstock.protocol.core.iq import Iq
+from headstock.api.stanza import Stanza
+from headstock.api.iq import Iq
 from headstock.lib.utils import generate_unique
 from headstock.api.contact import Roster
 

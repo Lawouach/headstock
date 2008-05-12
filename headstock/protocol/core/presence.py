@@ -4,7 +4,7 @@
 from Axon.Component import component
 from Axon.Ipc import shutdownMicroprocess, producerFinished
 
-from headstock.protocol.core.stanza import Stanza
+from headstock.api.stanza import Stanza
 from headstock.api.contact import Presence
 
 from bridge import Element as E

@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from headstock.protocol.core.iq import Iq
-from headstock.protocol.core.stanza import Stanza, StanzaError
+from headstock.api.iq import Iq
+from headstock.api.stanza import Stanza
 from headstock.lib.utils import generate_unique
 from bridge.common import XMPP_STANZA_ERROR_NS, XMPP_SASL_NS, XMPP_IBR_NS
 

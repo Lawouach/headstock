@@ -17,14 +17,14 @@ from bridge.common import XML_NS, XML_PREFIX, XMPP_CLIENT_NS, XMPP_STREAM_NS, XM
      XMPP_BIND_NS, XMPP_SESSION_NS, XMPP_DISCO_ITEMS_NS, XMPP_ROSTER_NS, xmpp_bind_as_attr
 from bridge.common import ANY_NAMESPACE
 
-from headstock.protocol.core.iq import Iq
+from headstock.api.iq import Iq
+from headstock.api.stanza import Stanza
 from headstock.protocol.core.jid import JID
-from headstock.protocol.core.stanza import Stanza
 
 from headstock.lib.auth.plain import generate_credential, validate_credentials
 from headstock.lib.auth.gaa import perform_authentication
 from headstock.lib.auth.digest import challenge_to_dict, compute_digest_response
-from headstock.lib.utils import generate_unique, extract_from_stanza
+from headstock.lib.utils import generate_unique
 from headstock.api.stream import StreamFeatures
 
 __all__ = ['ClientStream', 'StreamError', 'SaslError']
@@ -292,7 +292,7 @@ class ClientStream(component):
         self.send(self.jid, 'jid')
 
         # Sends the initial presence information to the server
-        self.propagate(element=Stanza(u'presence').to_element())
+        self.propagate(element=Stanza.to_element(Stanza(u'presence')))
         
         # Asks immediatly for the client's roster list
         iq = Iq.create_get_iq(from_jid=unicode(self.jid), stanza_id=generate_unique())
