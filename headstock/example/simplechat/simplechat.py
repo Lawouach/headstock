@@ -660,10 +660,10 @@ if __name__ == '__main__':
         from optparse import OptionParser
         parser = OptionParser()
         parser.add_option("-d", "--xmpp-domain", dest="domain",
-                          help="XMPP server domain")
+                          help="XMPP server domain (default: localhost)")
         parser.set_defaults(domain='localhost')
         parser.add_option("-a", "--address", dest="address", action="store",
-                           help="XMPP server address")
+                           help="XMPP server address (default: localhost:5222) ")
         parser.set_defaults(address='localhost:5222')
         parser.add_option("-u", "--username", dest="username",
                           help="XMPP username", action="store")
@@ -672,10 +672,10 @@ if __name__ == '__main__':
                           help="XMPP password")
         parser.set_defaults(password=None)
         parser.add_option("-r", "--register", action="store_true", dest="register",
-                          help="Register the user if the server supports it")
+                          help="Register the user if the server supports in-band registration (default: False)")
         parser.set_defaults(register=False)
         parser.add_option("-t", "--usetls", dest="usetls", action="store_true",
-                           help="Use TLS")
+                           help="Use TLS (default: False)")
         parser.set_defaults(usetls=False)
         (options, args) = parser.parse_args()
 
