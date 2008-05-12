@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 
-from headstock.error import *
 from headstock.api import Entity
 
 from bridge import Element as E
