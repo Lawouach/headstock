@@ -41,14 +41,14 @@ from headstock.protocol.extension.register import RegisterDispatcher
 from headstock.protocol.extension.activity import ActivityDispatcher
 from headstock.protocol.extension.discovery import DiscoveryDispatcher
 from headstock.protocol.extension.discovery import FeaturesDiscovery
-from headstock.protocol.core.jid import JID
-from headstock.lib.parser import XMLIncrParser
-from headstock.lib.logger import Logger
+from headstock.api.jid import JID
 from headstock.api.im import Message, Body, Event
 from headstock.api.contact import Presence, Roster, Item
 from headstock.api import Entity
 from headstock.api.activity import Activity
 from headstock.api.registration import Registration
+from headstock.lib.parser import XMLIncrParser
+from headstock.lib.logger import Logger
 from headstock.lib.utils import generate_unique
 
 from bridge import Element as E

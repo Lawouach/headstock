@@ -5,7 +5,7 @@
 __all__ = ['Activity']
 
 from headstock.api import Entity
-from headstock.protocol.core.jid import JID
+from headstock.api.jid import JID
 from headstock.lib.utils import generate_unique
 
 from bridge import Element as E

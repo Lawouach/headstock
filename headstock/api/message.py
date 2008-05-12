@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from datetime import datetime
-from headstock.protocol.core.jid import JID
+from headstock.api.jid import JID
 
 __all__ = ['Message']
 

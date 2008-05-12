@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from headstock.lib.utils import generate_unique
-from headstock.protocol.core.jid import JID
+from headstock.api.jid import JID
 from headstock.api import Entity
 from headstock.api.dataform import Data
 from headstock.api.error import Error

@@ -19,7 +19,7 @@ from bridge.common import ANY_NAMESPACE
 
 from headstock.api.iq import Iq
 from headstock.api.stanza import Stanza
-from headstock.protocol.core.jid import JID
+from headstock.api.jid import JID
 
 from headstock.lib.auth.plain import generate_credential, validate_credentials
 from headstock.lib.auth.gaa import perform_authentication

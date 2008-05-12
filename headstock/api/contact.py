@@ -3,7 +3,7 @@
 
 __all__ = ['Contact']
 
-from headstock.protocol.core.jid import JID
+from headstock.api.jid import JID
 from headstock.api import Entity, Foreign
 from bridge import Element as E
 from bridge.common import XMPP_CLIENT_NS, XMPP_ROSTER_NS

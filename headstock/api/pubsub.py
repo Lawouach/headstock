@@ -6,7 +6,7 @@ __all__ = ['Node']
 from headstock.lib.utils import generate_unique
 from headstock.api import Entity
 from headstock.api.error import Error
-from headstock.protocol.core.jid import JID
+from headstock.api.jid import JID
 from bridge import Element as E
 from bridge import Attribute as A
 from bridge.common import XMPP_CLIENT_NS, XMPP_STREAM_NS, \

@@ -7,7 +7,7 @@ from xml.sax.saxutils import unescape
 from datetime import datetime
 
 from headstock.api import Entity, Foreign
-from headstock.protocol.core.jid import JID
+from headstock.api.jid import JID
 from headstock.lib.utils import generate_unique
 
 from bridge import Element as E
