@@ -671,7 +671,7 @@ if __name__ == '__main__':
                           help="XMPP username", action="store")
         parser.set_defaults(username=None)
         parser.add_option("-p", "--password", action="store", dest="password",
-                          help="XMPP password")
+                          help="XMPP password. You may also be prompted for it if you do not pass this parameter")
         parser.set_defaults(password=None)
         parser.add_option("-r", "--register", action="store_true", dest="register",
                           help="Register the user if the server supports in-band registration (default: False)")
@@ -685,6 +685,9 @@ if __name__ == '__main__':
 
     def run():
         options = parse_commandline()
+        if not options.password:
+            from getpass import getpass
+            options.password = getpass()
         host, port = options.address.split(':')
         client = Client(unicode(options.username), 
                         unicode(options.password), 
