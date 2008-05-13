@@ -1,0 +1,56 @@
+<config xmlns="http://purl.oclc.org/DEFUZE/amplee">
+  <store>
+    <lock />
+    <storage type="filesystem" target="member">
+      <encoding>utf-8</encoding>
+      <basepath>repository</basepath>
+      <!-- Uncomment the following line if you want to add memcached caching support -->
+      <!--<cache ref="cache0" />-->
+    </storage>
+    <storage type="filesystem" target="media">
+      <encoding>utf-8</encoding>
+      <basepath>repository</basepath>
+    </storage>
+    <cache id="cache0">
+      <servers>
+	<server ip="127.0.0.1" port="11211" />
+      </servers>
+    </cache>
+<!--
+    <storage type="subversion" target="">
+      <repository-uri />
+      <workingcopy-path />
+      <username />
+      <password />
+    </storage>
+    <storage type="zodb" target="">
+      <fstype />
+      <fspath />
+      <address />
+      <top-level-node />
+    </storage>
+    <storage type="s3" target="">
+      <public-key />
+      <private-key />
+      <bucket-prefix />
+      <encoding>utf-8</encoding>
+      <aws-key-lookup>
+	<module />
+	<callable />
+	<aws-keys-path />
+      </aws-key-lookup>
+    </storage>
+    <storage type="dejavu" target="">
+      <dbtype />
+      <capitalize />
+      <encoding>ISO-8859-1</encoding>
+      <dbconf />
+    </storage>
+    <storage type="tarball" target="">
+      <basepath />
+      <compression />
+      <encoding>utf-8</encoding>
+    </storage>
+-->
+  </store>
+</config>
