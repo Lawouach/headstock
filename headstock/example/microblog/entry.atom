@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<atom:entry xmlns:atom="http://www.w3.org/2005/Atom">
+  <atom:id></atom:id>
+  <atom:title type="text"/>
+  <atom:published></atom:published>
+  <atom:updated></atom:updated>
+  <atom:content type="text"/>
+  <atom:author>
+    <atom:name/>
+  </atom:author>
+</atom:entry>

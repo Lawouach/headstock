@@ -78,30 +78,38 @@ class Server(object):
         d.add('/signout[/]', GET=self.webapp.signout)
         d.add('/', GET=self.webapp.index)
 
-        cherrypy.tree.mount(self.webapp, '/', {'/': { 'request.dispatch': d,
-                                                      'tools.etags.on': True,
-                                                      'tools.etags.autotags': True,
-                                                      'tools.sessions.on': True,
-                                                      'tools.sessions.storage_type': 'memcached',},
-                                               '/signup': {'tools.openid.on': True,},
-                                               '/profile/feed': {'tools.openid.on': False,
-                                                                 'tools.etags.on': True,
-                                                                 'tools.etags.autotags': True,},
-                                               '/profile/new': {'tools.openid.on': False,
-                                                                'tools.etags.on': True,
-                                                                'tools.etags.autotags': False,},
-                                               '/js': {'tools.openid.on': False,
-                                                       'tools.staticdir.on': True,
-                                                       'tools.staticdir.dir': os.path.join(base_dir, 'design', 
-                                                                                            'default', 'js')},
-                                               '/images': {'tools.openid.on': False,
-                                                           'tools.staticdir.on': True,
-                                                           'tools.staticdir.dir': os.path.join(base_dir, 'design', 
-                                                                                               'default', 'images')},
-                                               '/css': {'tools.openid.on': False,
-                                                        'tools.staticdir.on': True,
-                                                        'tools.staticdir.dir': os.path.join(base_dir, 'design', 
-                                                                                            'default', 'css')}})
+        for profile_name in self.profiles:
+            p = self.profiles[profile_name]
+            c = self.atompub.service.get_collection_by_xml_id('collection-%s' % profile_name)
+            self.webapp.attach_serving_collection_application(c, p, d)
+
+        conf = {'/': { 'request.dispatch': d,
+                       'tools.etags.on': True,
+                       'tools.etags.autotags': True,
+                       'tools.sessions.on': True,
+                       'tools.sessions.storage_type': 'memcached',},
+                '/signup': {'tools.openid.on': True,},
+                '/profile/feed': {'tools.openid.on': False,
+                                  'tools.etags.on': True,
+                                  'tools.etags.autotags': True,},
+                '/profile/new': {'tools.openid.on': False,
+                                 'tools.etags.on': True,
+                                 'tools.etags.autotags': False,},
+                '/js': {'tools.openid.on': False,
+                        'tools.staticdir.on': True,
+                        'tools.staticdir.dir': os.path.join(base_dir, 'design', 
+                                                            'default', 'js')},
+                '/images': {'tools.openid.on': False,
+                            'tools.staticdir.on': True,
+                            'tools.staticdir.dir': os.path.join(base_dir, 'design', 
+                                                                'default', 'images')},
+                '/css': {'tools.openid.on': False,
+                         'tools.staticdir.on': True,
+                         'tools.staticdir.dir': os.path.join(base_dir, 'design', 
+                                                             'default', 'css')}}
+
+
+        cherrypy.tree.mount(self.webapp, '/', conf)
 
     def setup_web(self):
         self.webapp = WebApplication(base_dir, self.atompub, self.tpl_lookup)
