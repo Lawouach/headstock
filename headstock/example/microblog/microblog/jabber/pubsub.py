@@ -338,8 +338,8 @@ class MessageHandler(component):
         self.atompub = atompub
         self.xmpphost = host
         self.session_id = session_id
-        if profile:
-            self.collection = self.atompub.get_collection(profile.username)
+        self.profile = profile
+        self.collection = self.atompub.get_collection(profile.username)
 
     def initComponents(self):
         sub = SubscribeTo("JID.%s" % self.session_id)
@@ -371,7 +371,7 @@ class MessageHandler(component):
             
             if self.dataReady("_response"):
                 #discard the HTTP response for now
-                print self.recv("_response")
+                member_entry = self.recv("_response")
                 
             if self.dataReady("inbox"):
                 msg = self.recv("inbox")
@@ -385,12 +385,12 @@ class MessageHandler(component):
                                       'extraheaders': {'content-type': 'application/atom+xml;type=entry',
                                                        'content-length': str(len(body)),
                                                        'slug': item.id}}
-                            #self.send(params, '_request') 
+                            self.send(params, '_request') 
                     elif item.event == 'retract':
                         params = {'url': '%s/%s' % (self.collection.get_base_edit_uri().rstrip('/'),
                                                     item.id.encode('utf-8')), 
                                   'method': 'DELETE'}
-                        #self.send(params, '_request') 
+                        self.send(params, '_request') 
 
             if not self.anyReady():
                 self.pause()
