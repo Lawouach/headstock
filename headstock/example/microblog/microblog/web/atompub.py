@@ -1,14 +1,12 @@
 # -*- coding: utf-8 -*-
-
-import cherrypy
-import time
 import os
+import cherrypy
 
+from amplee.indexer import *
 from amplee.atompub.collection import FeedHandler
 from amplee.loader import AtomPubLoader
 from amplee.error import ResourceOperationException
 from amplee.utils.mediatype import get_best_mimetype
-from amplee.atompub.member import MemberResource
 from amplee.atompub.workspace import *
 from amplee.atompub.collection import *
 from amplee.utils import get_isodate, generate_uuid_uri, \
@@ -16,163 +14,32 @@ from amplee.utils import get_isodate, generate_uuid_uri, \
      decode_slug, handle_if_match, safe_unquote, \
      extract_media_type, extract_url_trail, \
      safe_url_join, extract_url_path_info, qname
+from amplee.error import UnknownResource
 
-def _amplee_process_request_body():
-    # We do not want CherryPy to handle the request body
-    # as we will always simply read the content no matter
-    # what. The following two lines achieve this.
-    cherrypy.request.body = cherrypy.request.rfile
-    cherrypy.request.process_request_body = False
+import microblog.web.ampleetool
+from microblog.profile.manager import ProfileManager
+from microblog.atompub.resource import ResourceWrapper
 
-# We set the previous function as a tool that we can
-# enable for the Store 
-cherrypy.tools.amplee_request_body = cherrypy.Tool('before_request_body',
-                                                   _amplee_process_request_body)
+__all__ = ['AtomPubWebApplication', 'CollectionHandler',
+           'CollectionPagingHandler']
 
-__all__ = ['Application', 'ResourceWrapper']
-
-class Application(object):
-    def __init__(self, base_dir, index, dispatcher):
-        apl = AtomPubLoader(base_dir)
+class AtomPubWebApplication(object):
+    def __init__(self, base_dir, atompub, tpl_lookup):
         self.base_dir = base_dir
-        self.servdoc, self.xmldoc = apl.load(os.path.join(base_dir, 'config.xml'),
-                                             os.path.join(base_dir, 'service.xml'))
-
-        self.indexer = index
-        self.dispatcher = dispatcher
-        self.complete_service_loading()
-        self.attach_serving_service_application()
-
-        cherrypy.log('AtomPub service application ready')
+        self.atompub = atompub
+        self.tpl_lookup = tpl_lookup
         
-    def complete_service_loading(self):
-        # When a service is loaded from a service document
-        # some information must be set manually after the loading process
-        # as they couldn't be guessed by amplee
-        
-        for collection in self.servdoc.get_collections():
-            self.setup_collection(collection)
-
-    def setup_collection(self, collection):
-        # Because the service loader doesn't have the notiuon
-        # of an id for the collection, we first need to
-        # create one. For this example, we use the path info
-        # at which the collection can be located
-        pi = extract_url_path_info(collection.get_base_edit_uri()).strip('/')
-        collection.name_or_id = pi
-
-        # Next we use that id to ensure the repository structure
-        # is correctly created
-        collection.store.storage.create_container(pi)
-        collection.store.media_storage.create_container(pi)
-
-        # Set the index
-        collection.add_indexer(self.indexer)
-
-        # We indicate what class needs to be used when loading members
-        collection.set_member_class(ResourceWrapper)
-
-        # Reload members so that the index is updated (in case you'd delete it ;))
-        collection.reload_members()
-
-        # We instantiate the feed handler
-        collection.feed_handler = FeedHandler()
-        # Resest the collection feed cache 
-        collection.feed_handler.set(collection.feed)
-
-        # We look for a link that would indicate the public URI of this collection
-        query = '//app:collection[@href="%s"]/atom:link[@type="application/atom+xml;type=feed"]'
-
-        # Make sure you use the base_edit_uri so that you get the exact value of
-        # the href attribute, if you use the get_base_edit_uri() method you get
-        # the extended value prefixed with any potential xml:base found in one
-        # of the ancestor of the app:collection element
-        query = query % collection.base_edit_uri
-
-        result = self.xmldoc.xml_xpath(query)
-        if result:
-            link = result.pop()
-            collection.base_uri = unicode(link.href)
-
-        self.attach_serving_collection_application(collection, pi)
-
-    def attach_serving_service_application(self):
-        controller = ServiceHandler(self.servdoc.to_service().xml(indent=True))
-        self.dispatcher.connect('service', route='service', controller=controller,
-                                action='GET', conditions=dict(method=['GET']))
-        self.dispatcher.connect('service', route='service', controller=controller,
-                                action='HEAD', conditions=dict(method=['HEAD']))
-
-    def attach_serving_collection_application(self, c, path):
-        controller = CollectionHandler(c)
-        self.dispatcher.connect('controller_%s' % path, route=path, controller=controller,
-                                action='GET', conditions=dict(method=['GET']))
-        self.dispatcher.connect('controller_%s' % path, route=path, controller=controller,
-                                action='POST', conditions=dict(method=['POST']))
-        self.dispatcher.connect('controller_%s' % path, route=path, controller=controller,
-                                action='PUT', conditions=dict(method=['PUT']))
-        self.dispatcher.connect('controller_%s' % path, route=path, controller=controller,
-                                action='DELETE', conditions=dict(method=['DELETE']))
-
-        controller = CollectionPagingHandler(c)
-        self.dispatcher.connect('controller_%s_paging' % path, route='%s/paging' % path, 
-                                controller=controller, action='GET', conditions=dict(method=['GET']))
-    
-
-    def retrieve_collection(self, name):
-        return self.servdoc.get_collection(name.strip('/'))
-        
-
-    def add_collection(self, path):
-        path = path.strip('/')
-        basepath, collection_name = path.rsplit('/', 1)
-        workspace = AtomPubWorkspace(self.servdoc, basepath, title=basepath)
-        c = AtomPubCollection(workspace, name_or_id=path, title=collection_name,
-                              base_uri=path, base_edit_uri=path,
-                              accept_media_types=u'application/atom+xml;type=entry')
-        self.setup_collection(c)
-        self.attach_serving_collection_application(c)
-
-        # Let's save this to the service document
-        file(os.path.join(self.base_dir, 'service.xml'), 'wb').write(self.servdoc.to_service().xml(indent=True))
-
-        return c
-
-    def index(self):
-        return "microblogging"
-
-class ServiceHandler(object):
-    def __init__(self, servdoc):
-        self.servdoc = servdoc
-
-    def HEAD(self, *args, **kwargs):
+    def service_head(self, *args, **kwargs):
         content = self.GET(*args, **kwargs)
         cherrypy.response.headers['Content-Length'] = len(content)
 
-    def GET(self):
+    def service_get(self):
         cherrypy.response.headers['Content-Type'] = 'application/atomsvc+xml'
-        return self.servdoc
-
-class ResourceWrapper(MemberResource):
-    def generate_resource_id(self, entry=None, slug=None, info=None):
-        if slug:
-            return slug.replace(' ','_').decode('utf-8')
-        else:
-            # if not then we use the last segment of the
-            # link as the id of the resource in the storage
-            links = entry.xml_xpath('/atom:entry/atom:link[@rel="edit"]')
-            if links:
-                return extract_url_trail(links[0].href)
-
-        # fallback
-        return str(time.time())
-
-class DummyHandler(object):
-    pass
+        return self.atompub.service.to_service().xml(indent=True)
 
 class CollectionHandler(object):
-    exposed = True
-    _cp_config = {'tools.amplee_request_body.on': True}
+    _cp_config = {'tools.amplee_request_body.on': True,
+                  'tools.openid.on': False}
     
     def __init__(self, collection):
         self.collection = collection
@@ -216,13 +83,13 @@ class CollectionHandler(object):
     ##########################################
     # Web Service interface
     ##########################################
-    def GET(self, id=None):
-        if id == None:
-            collection_feed = self.collection.feed_handler.retrieve()
-            cherrypy.response.headers['etag'] = compute_etag_from_feed(collection_feed)
-            cherrypy.response.headers['content-type'] = 'application/atom+xml;type=feed'
-            return self.collection.feed_handler.collection_xml()
+    def feed(self):
+        collection_feed = self.collection.feed_handler.retrieve()
+        cherrypy.response.headers['etag'] = compute_etag_from_feed(collection_feed)
+        cherrypy.response.headers['content-type'] = 'application/atom+xml;type=feed'
+        return self.collection.feed_handler.collection_xml()
 
+    def retrieve(self, id):
         member = self.__get_member(id)
 
         if id.endswith('.atom'):
@@ -237,11 +104,11 @@ class CollectionHandler(object):
 
         return content
     
-    def HEAD(self, id=None):
-        content = self.GET(id)
+    def retrieve_head(self, id):
+        content = self.retrieve(id)
         cherrypy.response.headers['Content-Length'] = len(content)
 
-    def POST(self):
+    def create(self):
         mimetype = self.__check_content_type()
         length = self.__check_length()
         slug = decode_slug(cherrypy.request.headers.get('slug', None))
@@ -285,7 +152,7 @@ class CollectionHandler(object):
 
         return member.xml(indent=True)
         
-    def PUT(self, id):
+    def replace(self, id):
         mimetype = self.__check_content_type()
         length = self.__check_length()
         member = self.__get_member(id)
@@ -321,18 +188,19 @@ class CollectionHandler(object):
         cherrypy.response.headers['ETag'] = compute_etag_from_entry(new_member.atom)
         return new_member.xml()
 
-    def DELETE(self, id):
-        member = self.__get_member(id)
-        self.collection.prune(member.member_id, member.media_id)
-        self.collection.store.commit(message="Deleting %s and %s" % (member.member_id,
-                                                                     member.media_id))
-        
-        # Regenerate the collection feed
-        self.collection.feed_handler.set(self.collection.feed)
+    def remove(self, id):
+        id = safe_unquote(id)
+        member_id, media_id = self.collection.convert_id(id)
+        member = self.collection.get_member(member_id)
+        if member:
+            self.collection.prune(member.member_id, member.media_id)
+            self.collection.store.commit(message="Deleting %s and %s" % (member.member_id,
+                                                                         member.media_id))
+            
+            # Regenerate the collection feed
+            self.collection.feed_handler.set(self.collection.feed)
 
 class CollectionPagingHandler(object):
-    exposed = True
-    
     def __init__(self, collection):
         self.collection = collection
 

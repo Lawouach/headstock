@@ -26,14 +26,15 @@ dispatchers and handlers involved by liking each inbox to the expected outbox an
 vcie versa.
 
 """
+from Axon.Ipc import *
 from Axon.Component import component
+from Axon.Ipc import shutdownMicroprocess, producerFinished
 from Kamaelia.Chassis.Graphline import Graphline
 from Kamaelia.Chassis.Pipeline import Pipeline
 from Kamaelia.Util.Backplane import Backplane
 from Kamaelia.Util.Backplane import PublishTo, SubscribeTo
 from Kamaelia.Internet.TCPClient import TCPClient
-from Kamaelia.Util.Console import ConsoleReader
-from Axon.Ipc import shutdownMicroprocess, producerFinished
+from Kamaelia.Protocol.HTTP.HTTPClient import SimpleHTTPClient
     
 from headstock.protocol.core.stream import ClientStream, StreamError, SaslError
 from headstock.protocol.core.presence import PresenceDispatcher
@@ -44,20 +45,21 @@ from headstock.protocol.extension.activity import ActivityDispatcher
 from headstock.protocol.extension.discovery import DiscoveryDispatcher
 from headstock.protocol.extension.discovery import FeaturesDiscovery
 from headstock.protocol.extension.pubsub import *
-from headstock.api.jid import JID
-from headstock.api.im import Message, Body, Event
-from headstock.api.contact import Presence, Roster, Item
 from headstock.api import Entity
+from headstock.api.jid import JID
+from headstock.api.im import Message, Body, Event, XHTMLBody
+from headstock.api.contact import Presence, Roster, Item
 from headstock.api.activity import Activity
 from headstock.api.registration import Registration
 from headstock.lib.parser import XMLIncrParser
 from headstock.lib.logger import Logger
-from headstock.lib.utils import generate_unique
+from headstock.lib.utils import generate_unique, remove_BOM
 
 from bridge import Element as E
 from bridge.common import XMPP_CLIENT_NS, XMPP_ROSTER_NS, \
     XMPP_LAST_NS, XMPP_DISCO_INFO_NS, XMPP_IBR_NS, \
-    XMPP_DISCO_ITEMS_NS, XMPP_PUBSUB_NS, XMPP_PUBSUB_EVENT_NS
+    XMPP_DISCO_ITEMS_NS, XMPP_PUBSUB_NS, XMPP_PUBSUB_EVENT_NS,\
+    XMPP_PUBSUB_OWNER_NS
 
 from microblog.jabber.pubsub import DiscoHandler, ItemsHandler, MessageHandler
 
@@ -76,16 +78,17 @@ class RosterHandler(component):
                 "result"      : "", 
                 "activity"    : "headstock.api.activity.Activity instance to send to the server"}
 
-    def __init__(self, from_jid):
+    def __init__(self, from_jid, session_id):
         super(RosterHandler, self).__init__() 
         self.from_jid = from_jid
         self.roster = None
+        self.session_id = session_id
 
     def initComponents(self):
         # We subscribe to the JID backplane component
         # that will inform us when the server has
         # returned the per-session jid
-        sub = SubscribeTo("JID")
+        sub = SubscribeTo("JID.%s" % self.session_id)
         self.link((sub, 'outbox'), (self, 'jid'))
         self.addChildren(sub)
         sub.activate()
@@ -115,10 +118,8 @@ class RosterHandler(component):
             if self.dataReady("inbox"):
                 roster = self.recv("inbox")
                 self.roster = roster
-                print "Your contacts:"
                 for nodeid in roster.items:
                     contact = roster.items[nodeid]
-                    print "  ", contact.jid
                     
             if self.dataReady('ask-activity'):
                 self.recv('ask-activity')
@@ -140,20 +141,26 @@ class DummyMessageHandler(component):
                "control"  : "stops the component"}
     
     Outboxes = {"outbox"  : "headstock.api.im.Message to send to the client",
-                "signal"  : "Shutdown signal"}
+                "signal"  : "Shutdown signal",
+                "PI"      : "Publish item",
+                "DI"      : "Retract item",
+                "PN"      : "Purge node from items",
+                "CN"      : "Create node",
+                "DN"      : "Delete node",
+                "CCN"     : "Create collection node",
+                "DCN"     : "Delete collection node",
+                "SN"      : "Subscribe to node",
+                "UN"      : "Unsubscribe from node"}
 
-    def __init__(self):
+    def __init__(self, session_id, profile):
         super(DummyMessageHandler, self).__init__() 
         self.from_jid = None
+        self.session_id = session_id
+        self.profile = profile
 
     def initComponents(self):
-        sub = SubscribeTo("JID")
+        sub = SubscribeTo("JID.%s" % self.session_id)
         self.link((sub, 'outbox'), (self, 'jid'))
-        self.addChildren(sub)
-        sub.activate()
-
-        sub = SubscribeTo("CONSOLE")
-        self.link((sub, 'outbox'), (self, 'inbox'))
         self.addChildren(sub)
         sub.activate()
 
@@ -174,32 +181,38 @@ class DummyMessageHandler(component):
             
             if self.dataReady("inbox"):
                 m = self.recv("inbox")
-                # in this first case, we want to send the message
-                # typed in the console.
-                # The message is of the form:
-                #    contant_jid message
                 if isinstance(m, str) and m != '':
-                    try:
-                        contact_jid, message = m.split(' ', 1)
-                    except ValueError:
-                        print "Messages format: contact_jid message"
-                        continue
-                    m = Message(unicode(self.from_jid), unicode(contact_jid), 
-                                type=u'chat', stanza_id=generate_unique())
-                    m.event = Event.composing # note the composing event status
-                    m.bodies.append(Body(unicode(message)))
-                    self.send(m, "outbox")
-                    
-                    # Right after we sent the first message
-                    # we send another one reseting the event status
-                    m = Message(unicode(self.from_jid), unicode(contact_jid), 
-                                type=u'chat', stanza_id=generate_unique())
-                    self.send(m, "outbox")
+                    pass
                 # In this case we actually received a message
                 # from a contact, we print it.
                 elif isinstance(m, Message):
                     for body in m.bodies:
-                        print m.from_jid, ": ", str(body)
+                        message = remove_BOM(body.plain_body).strip()
+                        print repr(message)
+                        if message == 'help':
+                            m = Message(self.from_jid, m.from_jid)
+                            b = """<ul>
+                                        <li>PI text</li>
+                                        <li>PI text</li>
+                                        <li>DI text</li>
+                                        <li>CN text</li>
+                                        <li>DN text</li>
+                                        <li>PN text</li>
+                                        <li>SN text</li>
+                                        <li>UN text</li>
+                                   </ul>"""
+                            b = E.load(b).xml_root
+                            m.bodies.append(XHTMLBody(b))
+                            self.send(m, 'outbox')
+                        else:
+                            try:
+                                action, data = message.split(' ', 1)
+                            except ValueError:
+                                action = 'PI'
+                                data = message
+                                
+                            if action in self.outboxes:
+                                self.send(data, action) 
 
             if not self.anyReady():
                 self.pause()
@@ -219,11 +232,12 @@ class ActivityHandler(component):
                     "This is only used when the server supports the feature",
                 }
 
-    def __init__(self):
+    def __init__(self, session_id):
         super(ActivityHandler, self).__init__() 
+        self.session_id = session_id
 
     def initComponents(self):
-        sub = SubscribeTo("DISCO_FEAT")
+        sub = SubscribeTo("DISCO_FEAT.%s" % self.session_id)
         self.link((sub, 'outbox'), (self, 'inbox'))
         self.addChildren(sub)
         sub.activate()
@@ -243,7 +257,6 @@ class ActivityHandler(component):
             if self.dataReady("inbox"):
                 disco = self.recv("inbox")
                 support = disco.has_feature(XMPP_LAST_NS)
-                print "Activity support: ", support
                 if support:
                     self.send('', "activity-supported")
 
@@ -255,6 +268,7 @@ class ActivityHandler(component):
 class PresenceHandler(component):
     Inboxes = {"inbox"       : "headstock.api.contact.Presence instance",
                "control"     : "Shutdown the client stream",
+               "jid"      : "headstock.api.jid.JID instance received from the server",
                "subscribe"   : "",
                "unsubscribe" : "",}
     
@@ -263,10 +277,21 @@ class PresenceHandler(component):
                 "roster" : "",
                 "log"    : "log",}
     
-    def __init__(self):
+    def __init__(self, session_id):
         super(PresenceHandler, self).__init__()
+        self.session_id = session_id
+
+    def initComponents(self):
+        sub = SubscribeTo("JID.%s" % self.session_id)
+        self.link((sub, 'outbox'), (self, 'jid'))
+        self.addChildren(sub)
+        sub.activate()
+
+        return 1
 
     def main(self):
+        yield self.initComponents()
+
         while 1:
             if self.dataReady("control"):
                 mes = self.recv("control")
@@ -274,6 +299,16 @@ class PresenceHandler(component):
                 if isinstance(mes, shutdownMicroprocess) or isinstance(mes, producerFinished):
                     self.send(producerFinished(), "signal")
                     break
+
+            if self.dataReady("jid"):
+                self.from_jid = self.recv('jid')
+
+                if '.microblogging' not in unicode(self.from_jid):
+                     sibling = JID(unicode('%s.microblogging' % self.from_jid.node),
+                                   self.from_jid.domain)
+                     p = Presence(from_jid=self.from_jid, to_jid=unicode(sibling),
+                                  type=u'subscribe')
+                     self.send(p, "outbox")
 
             if self.dataReady("subscribe"):
                 p = self.recv("subscribe")
@@ -324,19 +359,32 @@ class PresenceHandler(component):
 class RegistrationHandler(component):
     Inboxes = {"inbox"   : "headstock.api.registration.Registration",
                "error"   : "headstock.api.registration.Registration",
-               "control" : "Shutdown the client stream",}
+               "control" : "Shutdown the client stream",
+               "_response": ""}
     
     Outboxes = {"outbox" : "headstock.api.registration.Registration",
                 "signal" : "Shutdown signal",
-                "log"    : "log",}
+                "log"    : "log",
+               "_request": ""}
     
-    def __init__(self, username, password):
+    def __init__(self, username, password, session_id, profile):
         super(RegistrationHandler, self).__init__()
         self.username = username
         self.password = password
+        self.profile = profile
         self.registration_id = None
+        self.session_id = session_id
+
+    def initComponents(self):
+        self.client = SimpleHTTPClient()
+        self.addChildren(self.client)
+        self.link((self, '_request'), (self.client, 'inbox')) 
+        self.link((self.client, 'outbox'), (self, '_response')) 
+        self.client.activate()
 
     def main(self):
+        yield self.initComponents()
+
         while 1:
             if self.dataReady("control"):
                 mes = self.recv("control")
@@ -345,13 +393,29 @@ class RegistrationHandler(component):
                     self.send(producerFinished(), "signal")
                     break
 
+            if self.dataReady("_response"):
+                self.recv("_response")
+                
             if self.dataReady("inbox"):
                 r = self.recv('inbox')
                 if r.registered:
-                    print "'%s' is already a registered username." % self.username
+                    self.send("'%s' is already a registered username." % r.infos[u'username'], 'log')
+                    c = Client.Sessions[r.infos[u'username']]
+                    c.shutdown()
+                    del Client.Sessions[r.infos[u'username']]
                 elif self.registration_id == r.stanza_id:
-                    print "'%s' is now a registered user."\
-                        "Please restart the client without the register flag." % self.username
+                    c = Client.Sessions[r.infos[u'username']]
+                    c.shutdown()
+                    del Client.Sessions[r.infos[u'username']]
+
+                    if '.microblogging' not in r.infos[u'username']:
+                        body = self.profile.xml()
+                        params = {'url': 'http://localhost:8080/profile/',
+                                  'method': 'POST', 'postbody': body, 
+                                  'extraheaders': {'content-type': 'application/xml',
+                                                   'slug': self.profile.username,
+                                                   'content-length': len(body)}}
+                        self.send(params, '_request') 
                 else:
                     if 'username' in r.infos and 'password' in r.infos:
                         self.registration_id = generate_unique()
@@ -362,7 +426,12 @@ class RegistrationHandler(component):
                 
             if self.dataReady("error"):
                 r = self.recv('error')
-                print r.error
+                if r.error.code == '409':
+                    self.send("'%s' is already a registered username." % r.infos[u'username'], 'log')
+                    c = Client.Sessions[r.infos[u'username']]
+                    c.shutdown()
+                    del Client.Sessions[r.infos[u'username']]
+                self.send(r.error, 'log')
 
             if not self.anyReady():
                 self.pause()
@@ -373,6 +442,8 @@ class Client(component):
     Inboxes = {"inbox"      : "",
                "jid"        : "",
                "streamfeat" : "",
+               "connected"  : "",
+               "unhandled"  : "",
                "control"    : "Shutdown the client stream"}
     
     Outboxes = {"outbox"  : "",
@@ -382,13 +453,25 @@ class Client(component):
                 "signal"  : "Shutdown signal",
                 "doregistration" : ""}
 
+    Domain = None
+    Host = u'localhost'
+    Port = 5222
+
+    Sessions = {}
+
     def __init__(self, atompub, username, password, domain, resource=u"headstock-client1", 
-                 server=u'localhost', port=5222, usetls=False, register=False):
+                 server=u'localhost', port=5222, usetls=False, register=False, session_id=None, profile=None):
         super(Client, self).__init__() 
+        self.running = False
+        self.connected = False
         self.atompub = atompub
-        self.jid = JID(username, domain, resource)
+        if not session_id:
+            session_id = generate_unique()
+        self.session_id = session_id
+        self.backplanes = []
         self.username = username
         self.password = password
+        self.jid = JID(self.username, domain, '%s!%s' % (resource, session_id))
         self.server = server
         self.port = port
         self.client = None
@@ -396,20 +479,80 @@ class Client(component):
         self.domain = domain
         self.usetls = usetls
         self.register = register
+        self.restartable = False
+        self.profile = profile
+
+    @staticmethod
+    def start_clients(atompub, users):
+        for username, password in users:
+            profile = atompub.load_profile(username)
+            Client.connect_jabber_user(atompub, username, password, profile)
+
+    @staticmethod
+    def register_jabber_user(atompub, username, password, profile):
+        c = Client(atompub, unicode(username), unicode(password), 
+                   domain=Client.Domain, server=Client.Host, port=Client.Port,
+                   usetls=True, register=True, profile=profile)
+        Client.Sessions[c.username] = c
+        c.activate()
+
+        username = unicode('%s.microblogging' % username)
+        c = Client(atompub, unicode(username), unicode(password), 
+                   domain=Client.Domain, server=Client.Host, port=Client.Port,
+                   usetls=True, register=True, profile=profile)
+        Client.Sessions[c.username] = c
+        c.activate()
+
+    @staticmethod
+    def connect_jabber_user(atompub, username, password, profile):
+        c = Client(atompub, unicode(username), unicode(password), 
+                   domain=Client.Domain, server=Client.Host, port=Client.Port,
+                   usetls=True, register=False, profile=profile)
+        Client.Sessions[c.username] = c
+        c.activate()
+        
+        username = unicode('%s.microblogging' % username)
+        c = Client(atompub, unicode(username), unicode(password), 
+                   domain=Client.Domain, server=Client.Host, port=Client.Port,
+                   usetls=True, register=False, profile=profile)
+        Client.Sessions[c.username] = c
+        c.activate()
+
+    @staticmethod
+    def disconnect_jabber_user(username):
+        if username in Client.Sessions:
+            c = Client.Sessions[username]
+            del Client.Sessions[username]
+            c.shutdown()
+
+    @staticmethod
+    def get_status(username):
+        return username in Client.Sessions
+
+    @staticmethod
+    def is_registered(username):
+        if username.lower() in Client.Sessions:
+            return Client.Sessions[username.lower()]
+
+        return False
 
     def passwordLookup(self, jid):
         return self.password
 
     def shutdown(self):
-        self.send(Presence.to_element(Presence(self.jid, type=u'unavailable')), 'forward')
+        #self.send(Presence.to_element(Presence(self.jid, type=u'unavailable')), 'forward')
         self.send('OUTGOING : </stream:stream>', 'log')
-        self.send('</stream:stream>', 'outbox') 
+        self.send('</stream:stream>', 'outbox')
+        self.running = False 
 
     def abort(self):
         self.send('OUTGOING : </stream:stream>', 'log')
-        self.send('</stream:stream>', 'outbox') 
+        self.send('</stream:stream>', 'outbox')
+        self.running = False 
 
     def setup(self):
+        self.running = True
+
         # Backplanes are like a global entry points that
         # can be accessible both for publishing and
         # recieving data. 
@@ -425,24 +568,21 @@ class Client(component):
         # to be dispatched at once to many (such as when
         # the server returns the per-session JID that
         # is of interest for most other components).
-        Backplane("CONSOLE").activate()
-        Backplane("JID").activate()
+        self.backplanes.append(Backplane("JID.%s" % self.session_id).activate())
         # Used to inform components that the session is now active
-        Backplane("BOUND").activate()
+        self.backplanes.append(Backplane("BOUND.%s" % self.session_id).activate())
         # Used to inform components of the supported features
-        Backplane("DISCO_FEAT").activate()
+        self.backplanes.append(Backplane("DISCO_FEAT.%s" % self.session_id).activate())
 
-        sub = SubscribeTo("JID")
+        sub = SubscribeTo("JID.%s" % self.session_id)
         self.link((sub, 'outbox'), (self, 'jid'))
         self.addChildren(sub)
         sub.activate()
 
-        # We pipe everything typed into the console
-        # directly to the console backplane so that
-        # every components subscribed to the console
-        # backplane inbox will get the typed data and
-        # will decide it it's of concern or not.
-        Pipeline(ConsoleReader(), PublishTo('CONSOLE')).activate()
+        sub = SubscribeTo("BOUND.%s" % self.session_id)
+        self.link((sub, 'outbox'), (self, 'connected'))
+        self.addChildren(sub)
+        sub.activate()
 
         # Add two outboxes ro the ClientSteam to support specific extensions.
         ClientStream.Outboxes["%s.query" % XMPP_IBR_NS] = "Registration"
@@ -452,31 +592,43 @@ class Client(component):
         ClientStream.Outboxes["%s.subscribe" % XMPP_PUBSUB_NS] = "Pubsub subscription handler"
         ClientStream.Outboxes["%s.unsubscribe" % XMPP_PUBSUB_NS] = "Pubsub unsubscription handler"
         ClientStream.Outboxes["%s.subscriptions" % XMPP_PUBSUB_NS] = "Pubsub subscriptions handler"
+        ClientStream.Outboxes["%s.affiliations" % XMPP_PUBSUB_NS] = "Pubsub affiliations handler"
         ClientStream.Outboxes["%s.create" % XMPP_PUBSUB_NS] = "Pubsub node creation handler"
-        ClientStream.Outboxes["%s.delete" % XMPP_PUBSUB_NS] = "Pubsub node deletion handler"
+        ClientStream.Outboxes["%s.purge" % XMPP_PUBSUB_OWNER_NS] = "Pubsub node purge handler"
+        ClientStream.Outboxes["%s.delete" % XMPP_PUBSUB_OWNER_NS] = "Pubsub node delete handler"
         ClientStream.Outboxes["%s.publish" % XMPP_PUBSUB_NS] = "Pubsub item publication handler"
         ClientStream.Outboxes["%s.retract" % XMPP_PUBSUB_NS] = "Pubsub item deletion handler"
         ClientStream.Outboxes["%s.x" % XMPP_PUBSUB_EVENT_NS] = ""
         ClientStream.Outboxes["%s.event" % XMPP_PUBSUB_EVENT_NS] = ""
 
         self.client = ClientStream(self.jid, self.passwordLookup, use_tls=self.usetls)
-        
+        self.addChildren(self.client)
+        self.client.activate()
+
         self.graph = Graphline(client = self,
-                               console = SubscribeTo('CONSOLE'),
-                               logger = Logger(path=None, stdout=True),
+                               logger = Logger(path='./logs/%s.log' % self.username, 
+                                               stdout=False, name=self.session_id),
                                tcp = TCPClient(self.server, self.port),
                                xmlparser = XMLIncrParser(),
                                xmpp = self.client,
                                streamerr = StreamError(),
                                saslerr = SaslError(),
-                               discohandler = DiscoHandler(self.jid, self.atompub, self.domain),
-                               activityhandler = ActivityHandler(),
-                               rosterhandler = RosterHandler(self.jid),
-                               registerhandler = RegistrationHandler(self.username, self.password),
-                               msgdummyhandler = DummyMessageHandler(),
-                               presencehandler = PresenceHandler(),
-                               itemshandler = ItemsHandler(self.jid, self.atompub, self.domain),
-                               pubsubmsgeventhandler = MessageHandler(self.jid, self.atompub, self.domain),
+                               discohandler = DiscoHandler(self.jid, self.atompub, self.domain, 
+                                                           session_id=self.session_id,
+                                                           profile=self.profile),
+                               activityhandler = ActivityHandler(session_id=self.session_id),
+                               rosterhandler = RosterHandler(self.jid, session_id=self.session_id),
+                               registerhandler = RegistrationHandler(self.username, self.password,
+                                                                     self.session_id, profile=self.profile),
+                               msgdummyhandler = DummyMessageHandler(session_id=self.session_id, 
+                                                                     profile=self.profile),
+                               presencehandler = PresenceHandler(session_id=self.session_id),
+                               itemshandler = ItemsHandler(self.jid, self.atompub, self.domain,
+                                                           session_id=self.session_id, 
+                                                           profile=self.profile),
+                               pubsubmsgeventhandler = MessageHandler(self.jid, self.atompub, self.domain,
+                                                                      session_id=self.session_id,
+                                                                      profile=self.profile),
                                presencedisp = PresenceDispatcher(),
                                rosterdisp = RosterDispatcher(),
                                msgdisp = MessageDispatcher(),
@@ -484,11 +636,10 @@ class Client(component):
                                activitydisp = ActivityDispatcher(),
                                registerdisp = RegisterDispatcher(),
                                pubsubdisp = PubSubDispatcher(),
-                               pjid = PublishTo("JID"),
-                               pbound = PublishTo("BOUND"),
+                               pjid = PublishTo("JID.%s" % self.session_id),
+                               pbound = PublishTo("BOUND.%s" % self.session_id),
 
                                linkages = {('xmpp', 'terminated'): ('client', 'inbox'),
-                                           ('console', 'outbox'): ('client', 'control'),
                                            ('client', 'forward'): ('xmpp', 'forward'),
                                            ('client', 'outbox'): ('tcp', 'inbox'),
                                            ('client', 'signal'): ('tcp', 'control'),
@@ -503,8 +654,8 @@ class Client(component):
                                            ("xmpp", "jid"): ("pjid", "inbox"),
                                            ("xmpp", "bound"): ("pbound", "inbox"),
                                            ("xmpp", "features"): ("client", "streamfeat"),
+                                           ("xmpp", "unhandled"): ("client", "unhandled"),
                                            ("client", "doauth"): ("xmpp", "auth"),
-                                           ("xmpp", "bound"): ("discohandler", "initiate"),
                                            
                                            # Registration
                                            ("xmpp", "%s.query" % XMPP_IBR_NS): ("registerdisp", "inbox"),
@@ -535,12 +686,18 @@ class Client(component):
                                            # Discovery
                                            ("xmpp", "%s.query" % XMPP_DISCO_INFO_NS): ("discodisp", "features.inbox"),
                                            ("xmpp", "%s.query" % XMPP_DISCO_ITEMS_NS): ("discodisp", "items.inbox"),
+                                           ("xmpp", "%s.affiliations" % XMPP_PUBSUB_NS): ("discodisp", "affiliation.inbox"),
+                                           ("xmpp", "%s.subscriptions" % XMPP_PUBSUB_NS): ("discodisp", "subscription.inbox"),
                                            ("discodisp", "log"): ('logger', "inbox"),
                                            ("discohandler", "features-disco"): ('discodisp', "features.forward"),
                                            ('discohandler', 'items-disco'): ('discodisp', 'items.forward'),
                                            ('discohandler', 'subscriptions-disco'): ('discodisp', 'subscription.forward'),
+                                           ('discohandler', 'affiliations-disco'): ('discodisp', 'affiliation.forward'),
                                            ("discodisp", "out.features.result"): ('discohandler', "features.result"),
+                                           ("discodisp",'subscription.outbox'):('xmpp','forward'),
+                                           ("discodisp",'affiliation.outbox'):('xmpp','forward'),
                                            ("discodisp",'out.subscription.result'):('discohandler','subscriptions.result'),
+                                           ("discodisp",'out.affiliation.result'):('discohandler','affiliations.result'),
                                            ("discodisp", 'out.items.result'): ('discohandler', 'items.result'),
                                            ("discodisp", 'out.items.error'): ('discohandler', 'items.error'),
                                            ("discodisp", "outbox"): ("xmpp", "forward"),
@@ -561,7 +718,8 @@ class Client(component):
 
                                            # Pubsub
                                            ("xmpp", "%s.create" % XMPP_PUBSUB_NS): ("pubsubdisp", "create.inbox"),
-                                           ("xmpp", "%s.delete" % XMPP_PUBSUB_NS): ("pubsubdisp", "delete.inbox"),
+                                           ("xmpp", "%s.delete" % XMPP_PUBSUB_OWNER_NS): ("pubsubdisp", "delete.inbox"),
+                                           ("xmpp", "%s.purge" % XMPP_PUBSUB_OWNER_NS): ("pubsubdisp", "purge.inbox"),
                                            ("xmpp", "%s.subscribe" % XMPP_PUBSUB_NS): ("pubsubdisp", "subscribe.inbox"),
                                            ("xmpp", "%s.unsubscribe" % XMPP_PUBSUB_NS):("pubsubdisp", "unsubscribe.inbox"),
                                            ("xmpp", "%s.publish" % XMPP_PUBSUB_NS): ("pubsubdisp", "publish.inbox"),
@@ -570,20 +728,35 @@ class Client(component):
                                            ("xmpp", "%s.event" % XMPP_PUBSUB_EVENT_NS): ("pubsubdisp", "message.inbox"),
                                            ("pubsubdisp", "log"): ('logger', "inbox"),
                                            ("discohandler", "create-node"): ("pubsubdisp", "create.forward"),
+                                           ("discohandler", "delete-node"): ("pubsubdisp", "delete.forward"),
                                            ("discohandler", "subscribe-node"): ("pubsubdisp", "subscribe.forward"),
+                                           ("discohandler", "unsubscribe-node"): ("pubsubdisp", "unsubscribe.forward"),
                                            ("pubsubdisp", "create.outbox"): ("xmpp", "forward"),
                                            ("pubsubdisp", "delete.outbox"): ("xmpp", "forward"),
+                                           ("pubsubdisp", "purge.outbox"): ("xmpp", "forward"),
                                            ("pubsubdisp", "subscribe.outbox"): ("xmpp", "forward"),
                                            ("pubsubdisp", "unsubscribe.outbox"): ("xmpp", "forward"),
                                            ("pubsubdisp", "publish.outbox"): ("xmpp", "forward"),
                                            ("pubsubdisp", "retract.outbox"): ("xmpp", "forward"),
+                                           ("pubsubdisp", "out.create.result"): ("discohandler", "created"),
+                                           ("pubsubdisp", "out.delete.result"): ("discohandler", "deleted"),
+                                           ("pubsubdisp", "out.create.error"): ("discohandler", "error"),
+                                           ("pubsubdisp", "out.delete.error"): ("discohandler", "error"),
                                            ("pubsubdisp", "out.message"): ('pubsubmsgeventhandler', 'inbox'),
-                                           ('console', 'outbox'): ('itemshandler', 'inbox'),
                                            ('itemshandler', 'publish'): ('pubsubdisp', 'publish.forward'),
                                            ('itemshandler', 'delete'): ('pubsubdisp', 'retract.forward'),
+                                           ('itemshandler', 'purge'): ('pubsubdisp', 'purge.forward'),
+                                           ("msgdummyhandler", "PI"): ('itemshandler', 'topublish'),
+                                           ("msgdummyhandler", "DI"): ('itemshandler', 'todelete'),
+                                           ("msgdummyhandler", "PN"): ('itemshandler', 'topurge'),
+                                           ("msgdummyhandler", "CN"): ('discohandler', 'docreate'),
+                                           ("msgdummyhandler", "DN"): ('discohandler', 'dodelete'),
+                                           ("msgdummyhandler", "SN"): ('discohandler', 'dosubscribe'),
+                                           ("msgdummyhandler", "UN"): ('discohandler', 'dounsubscribe'),
                                            ('pubsubmsgeventhandler', 'items-disco'): ('discodisp', 'items.forward'),
                                            }
                                )
+
         self.addChildren(self.graph)
         self.graph.activate()
 
@@ -592,7 +765,7 @@ class Client(component):
     def main(self):
         yield self.setup()
 
-        while 1:
+        while self.running:
             if self.dataReady("control"):
                 mes = self.recv("control")
 
@@ -603,6 +776,15 @@ class Client(component):
                     self.send(mes, "signal")
                     break
 
+            if self.dataReady("connected"):
+                self.recv('connected')
+                self.connected = True
+                    
+
+            if self.dataReady("unhandled"):
+                msg = self.recv('unhandled')
+                #self.send(('UNHANDLED', msg), 'log')
+                
             if self.dataReady("inbox"):
                 msg = self.recv('inbox')
                 if msg == "quit":
@@ -628,6 +810,4 @@ class Client(component):
   
             yield 1
 
-        yield 1
-        self.stop()
-        print "You can hit Ctrl-C to shutdown all processes now." 
+        yield shutdownMicroprocess(self, self.children, self.backplanes)

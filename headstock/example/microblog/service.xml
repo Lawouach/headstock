@@ -1,3 +1,25 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <app:service xmlns:app="http://www.w3.org/2007/app" xml:lang="en" xml:base="http://localhost:8080/">
+  <app:workspace xml:id="workspace-profile">
+    <atom:title xmlns:atom="http://www.w3.org/2005/Atom" type="text">Profile management</atom:title>
+    <app:collection xml:id="collection-profile-new" href="profile/new">
+      <atom:title xmlns:atom="http://www.w3.org/2005/Atom" type="text">Newly created profiles</atom:title>
+      <atom:link xmlns:atom="http://www.w3.org/2005/Atom" href="profile/new" type="application/atom+xml;type=feed" rel="alternate"/>
+      <app:accept>application/xml</app:accept>
+    </app:collection>
+    <app:collection xml:id="collection-profile" href="profile/">
+      <atom:title xmlns:atom="http://www.w3.org/2005/Atom" type="text">Available profiles</atom:title>
+      <atom:link xmlns:atom="http://www.w3.org/2005/Atom" href="profile/" type="application/atom+xml;type=feed" rel="alternate"/>
+      <app:accept>application/atom+xml;type=entry</app:accept>
+      <app:accept>application/xml</app:accept>
+    </app:collection>
+  </app:workspace>
+  <app:workspace xml:id="workspace-Lawouach">
+    <atom:title xmlns:atom="http://www.w3.org/2005/Atom" type="text">Lawouach</atom:title>
+    <app:collection xml:id="collection-Lawouach" href="Lawouach">
+      <atom:title xmlns:atom="http://www.w3.org/2005/Atom" type="text">Lawouach</atom:title>
+      <atom:link xmlns:atom="http://www.w3.org/2005/Atom" href="Lawouach" type="application/atom+xml;type=feed" rel="alternate"/>
+      <app:accept>application/atom+xml;type=entry</app:accept>
+    </app:collection>
+  </app:workspace>
 </app:service>

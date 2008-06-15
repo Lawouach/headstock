@@ -1,103 +1,141 @@
 # -*- coding: utf-8 -*-
 import sys
 import os
-import socket
-import threading
-from optparse import OptionParser
+import tempfile
 
-from cherrypy.process import bus
-from cherrypy.process import plugins, servers
+import cherrypy
+from selector4cherrypy import SelectorDispatcher
+from openid.store import filestore
 
-from microblog.jabber.client import Client
-from microblog.web import setup_atompub
+from mako.template import Template
+from mako.lookup import TemplateLookup
+    
+import microblog.web.profiletool
+from microblog.web.oidtool import OpenIDTool
+from microblog.web.application import WebApplication
+from microblog.web.oid import OpenIDWebApplication
+from microblog.web.atompub import AtomPubWebApplication
+from microblog.web.profile import UserProfileAtomPubWebApplication
+from microblog.profile.manager import ProfileManager
+
+from microblog.atompub.application import AtomPubApplication
 
 base_dir = os.getcwd()
 
-def parse_commandline():
-    from optparse import OptionParser
-    parser = OptionParser()
-    parser.add_option("-d", "--xmpp-domain", dest="domain",
-                      help="XMPP server domain (default: localhost)")
-    parser.set_defaults(domain='localhost')
-    parser.add_option("-a", "--address", dest="address", action="store",
-                       help="XMPP server address (default: localhost:5222) ")
-    parser.set_defaults(address='localhost:5222')
-    parser.add_option("-u", "--username", dest="username",
-                      help="XMPP username", action="store")
-    parser.set_defaults(username=None)
-    parser.add_option("-p", "--password", action="store", dest="password",
-                      help="XMPP password. You may also be prompted for it if you do not pass this parameter")
-    parser.set_defaults(password=None)
-    parser.add_option("-r", "--register", action="store_true", dest="register",
-                      help="Register the user if the server supports in-band registration (default: False)")
-    parser.set_defaults(register=False)
-    parser.add_option("-t", "--usetls", dest="usetls", action="store_true",
-                       help="Use TLS (default: False)")
-    parser.set_defaults(usetls=False)
-    parser.add_option("-w", "--web-only", dest="webonly", action="store_true",
-                       help="Web server only (default: False)")
-    parser.set_defaults(webonly=False)
-    (options, args) = parser.parse_args()
-
-    return options
-
 class Server(object):
     def __init__(self):
-        self.options = parse_commandline()
-        self.client = None
+        self.setup_mako()
+        self.setup_atompub()
+        self.setup_profiles()
+        self.setup_openid()
+        self.setup_web()
+        self.setup_cherrypy()
 
-        atompub = setup_atompub(base_dir)
-        if not self.options.webonly:
-            if not self.options.password:
-                from getpass import getpass
-                self.options.password = getpass()
-            host, port = self.options.address.split(':')
-            self.client = Client(atompub, unicode(self.options.username), 
-                                 unicode(self.options.password), 
-                                 unicode(self.options.domain),
-                                 server=host, port=int(port),
-                                 usetls=self.options.usetls,
-                                 register=self.options.register)
+    def run(self):
+        cherrypy.engine.start()
+        cherrypy.engine.block()
 
-    def start(self):
-        if self.client:
-            self.client.activate()
-    start.priority = 90
+    def setup_cherrypy(self):   
+        cherrypy.config.update({'engine.autoreload_on' : False,
+                                'server.socket_port' : 8080, 
+                                'server.socket_host': '127.0.0.1',
+                                'server.socket_queue_size': 15,
+                                'log.screen': True,
+                                'log.access_file': os.path.join(base_dir, 'logs', 'http_access.log'),
+                                'log.error_file': os.path.join(base_dir, 'logs', 'http_error.log'),
+                                'checker.on': False,})
+        d = SelectorDispatcher()
+        d.add('/service[/]', GET=self.atompubapp.service_get, 
+              HEAD=self.atompubapp.service_head)
 
-    def stop(self):
-        if self.client:
-            self.client.shutdown()
+        # OpenID controllers
+        d.add('/auth/login', GET=self.oidapp.login)
+        d.add('/auth/logout', GET=self.oidapp.logout)
+        d.add('/auth/failure', GET=self.oidapp.failure)
+        d.add('/auth/error', GET=self.oidapp.error)
+        d.add('/auth/cancelled', GET=self.oidapp.cancelled)
 
-    def exit(self):
-        self.stop()
+        # New profiles controllers
+        d.add('/profile/new/feed', GET=self.newprofileapp.feed)
+        d.add('/profile/new/', POST=self.newprofileapp.create)
+        d.add('/profile/new/{id}', GET=self.newprofileapp.retrieve, 
+              HEAD=self.newprofileapp.retrieve_head,
+              PUT=self.newprofileapp.replace,
+              DELETE=self.newprofileapp.remove)
 
-def setup(server):
-    plugins.SignalHandler(bus)
-    bus.subscribe('start', server.start)
-    bus.subscribe('graceful', server.stop)
-    bus.subscribe('exit', server.exit)
+        # Profiles controllers
+        d.add('/profile/feed', GET=self.existingprofileapp.feed)
+        d.add('/profile/', POST=self.existingprofileapp.create)
+        d.add('/profile/{id}', GET=self.existingprofileapp.retrieve,
+              HEAD=self.existingprofileapp.retrieve_head,
+              PUT=self.existingprofileapp.replace,
+              DELETE=self.existingprofileapp.remove)
 
-def serve_http_only():
-    import cherrypy
-    cherrypy.quickstart()
+        # Main web application controllers
+        d.add('/signin[/]', GET=self.webapp.signin)
+        d.add('/signup[/]', GET=self.webapp.signup)
+        d.add('/signup/complete', POST=self.webapp.signup_complete)
+        d.add('/signout[/]', GET=self.webapp.signout)
+        d.add('/', GET=self.webapp.index)
 
-def serve():
-    bus.start()
-    try:
-        try:
-            from Axon.Scheduler import scheduler 
-            scheduler.run.runThreads(slowmo=0.01) 
-        except (KeyboardInterrupt, IOError):
-            pass
-        except SystemExit:
-            pass
-    finally:
-        bus.exit()
+        cherrypy.tree.mount(self.webapp, '/', {'/': { 'request.dispatch': d,
+                                                      'tools.etags.on': True,
+                                                      'tools.etags.autotags': True,
+                                                      'tools.sessions.on': True,
+                                                      'tools.sessions.storage_type': 'memcached',},
+                                               '/signup': {'tools.openid.on': True,},
+                                               '/profile/feed': {'tools.openid.on': False,
+                                                                 'tools.etags.on': True,
+                                                                 'tools.etags.autotags': True,},
+                                               '/profile/new': {'tools.openid.on': False,
+                                                                'tools.etags.on': True,
+                                                                'tools.etags.autotags': False,},
+                                               '/js': {'tools.openid.on': False,
+                                                       'tools.staticdir.on': True,
+                                                       'tools.staticdir.dir': os.path.join(base_dir, 'design', 
+                                                                                            'default', 'js')},
+                                               '/images': {'tools.openid.on': False,
+                                                           'tools.staticdir.on': True,
+                                                           'tools.staticdir.dir': os.path.join(base_dir, 'design', 
+                                                                                               'default', 'images')},
+                                               '/css': {'tools.openid.on': False,
+                                                        'tools.staticdir.on': True,
+                                                        'tools.staticdir.dir': os.path.join(base_dir, 'design', 
+                                                                                            'default', 'css')}})
+
+    def setup_web(self):
+        self.webapp = WebApplication(base_dir, self.atompub, self.tpl_lookup)
+        self.oidapp = OpenIDWebApplication(self.tpl_lookup)
+        self.atompubapp = AtomPubWebApplication(base_dir, self.atompub, self.tpl_lookup)
+        
+        collection = self.atompub.service.get_collection_by_xml_id('collection-profile')
+        self.existingprofileapp = UserProfileAtomPubWebApplication(base_dir, self.atompub, 
+                                                                   collection, self.tpl_lookup)
+        collection = self.atompub.service.get_collection_by_xml_id('collection-profile-new')
+        self.newprofileapp = UserProfileAtomPubWebApplication(base_dir, self.atompub, 
+                                                              collection, self.tpl_lookup)
+        self.webapp.new_profiles_atompub_app = self.newprofileapp
+        self.webapp.profiles_atompub_app = self.newprofileapp
+
+    def setup_profiles(self):
+        self.profiles = ProfileManager.load_profiles(base_dir, self.atompub)
+
+    def setup_atompub(self):
+        self.atompub = AtomPubApplication(base_dir)
+        
+    def setup_openid(self):
+        store = filestore.FileOpenIDStore(tempfile.gettempdir())
+        cherrypy.tools.openid = OpenIDTool(store, '/auth')
+
+    def setup_mako(self):
+        tpl_directory = os.path.join(base_dir, 'design', 'default', 'templates')
+        tpl_cache_directory = os.path.join(tpl_directory, 'cache')
+        
+        self.tpl_lookup = TemplateLookup(directories=[tpl_directory], 
+                                         module_directory=tpl_cache_directory, 
+                                         collection_size=70)
+
 
 if __name__ == '__main__':
     s = Server()
-    setup(s)
-    if s.options.webonly:
-        serve_http_only()
-    else:
-        serve()
+    s.run()
