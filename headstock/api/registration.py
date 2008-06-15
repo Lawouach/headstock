@@ -64,7 +64,7 @@ class Registration(Entity):
              content=e.infos[info]) 
 
         if e.x:
-            Data.to_element(x, parent=query)
+            Data.to_element(e.x, parent=query)
 
         return iq
         

@@ -23,14 +23,14 @@ class Error(object):
 
     @staticmethod
     def from_element(e):
-        error_type = e.get_attribute('type')
-        code = e.get_attribute('code')
+        error_type = e.get_attribute_value('type')
+        code = e.get_attribute_value('code')
         condition = text = lang = foreign = None
         for child in e.xml_children:
             if child.xml_ns in [XMPP_STANZA_ERROR_NS, XMPP_SASL_NS]:
                 if child.xml_name == u'text':
                     text = child.xml_text
-                    lang = child.get_attribute('lang')
+                    lang = child.get_attribute_value('lang')
                 else:
                     condition = child.xml_name
             else:

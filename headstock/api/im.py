@@ -13,7 +13,7 @@ from headstock.lib.utils import generate_unique
 from bridge import Element as E
 from bridge import Attribute as A
 from bridge.common import XML_NS, XML_PREFIX, XMPP_CLIENT_NS, \
-     XMPP_EVENT_NS, XMPP_XOOB_NS
+     XMPP_EVENT_NS, XMPP_XOOB_NS, XMPP_XHTML_IM_NS, XHTML1_NS
 
 class Body(object):
     def __init__(self, content, lang=None):
@@ -25,6 +25,13 @@ class Body(object):
 
     def __str__(self):
         return str(self.plain_body)
+
+class XHTMLBody(object):
+    def __init__(self, inner):
+        self.inner = inner
+        
+    def __repr__(self):
+        return '<XHTMLBody at %s>' % (hex(id(self)),)
 
 class Subject(object):
     def __init__(self, content, lang=None):
@@ -49,10 +56,8 @@ class Event(object):
 
 class Message(Entity):
     def __init__(self, from_jid, to_jid, type=u'normal', stanza_id=None, lang=None):
-        Entity.__init__(self, from_jid, to_jid)
-        self.type = type
+        Entity.__init__(self, from_jid, to_jid, type, stanza_id)
         self.lang = lang
-        self.stanza_id = stanza_id 
 
         self.bodies = []
         self.subjects = []
@@ -99,6 +104,9 @@ class Message(Entity):
                     message.subjects.append(b)
                 elif child.xml_name == 'thread':
                     message.thread = child.xml_text
+                if child.xml_name == 'html' and child.xml_ns == XMPP_XHTML_IM_N:
+                    b = XHTMLBody(child.xml_children.clone())
+                    message.bodies.append(b)
                 else:
                     message.foreign.append(Foreign(child))
             else:
@@ -131,11 +139,17 @@ class Message(Entity):
                   prefix=XML_PREFIX, namespace=XML_NS, parent=s)
 
         for body in m.bodies:
-            b = E(u'body', content=body.plain_body,
-                  namespace=XMPP_CLIENT_NS, parent=e)
-            if body.lang:
-                A(u'lang', value=body.lang,
-                  prefix=XML_PREFIX, namespace=XML_NS, parent=b)
+            if isinstance(body, Body):
+                b = E(u'body', content=body.plain_body,
+                      namespace=XMPP_CLIENT_NS, parent=e)
+                if body.lang:
+                    A(u'lang', value=body.lang,
+                      prefix=XML_PREFIX, namespace=XML_NS, parent=b)
+            elif isinstance(body, XHTMLBody):
+                h = E(u'html', namespace=XMPP_XHTML_IM_NS, parent=e)
+                b = E(u'body', namespace=XHTML1_NS, parent=h)
+                body.inner.xml_parent = b
+                b.xml_children.append(body.inner)
 
         if m.thread:
             E(u'thread', content=m.thread,

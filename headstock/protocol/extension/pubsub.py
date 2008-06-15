@@ -11,7 +11,8 @@ from headstock.api.pubsub import Node, Message
 __all__ = ['SubscriptionDispatcher', 'NodeCreationDispatcher',
            'NodeDeletionDispatcher', 'UnsubscriptionDispatcher', 
            'ItemPublicationDispatcher', 'ItemDeletionDispatcher',
-           'MessageEventDispatcher', 'PubSubDispatcher']
+           'MessageEventDispatcher', 'NodePurgeDispatcher',
+           'PubSubDispatcher']
 
 class SubscriptionDispatcher(component):
     
@@ -245,6 +246,64 @@ class NodeDeletionDispatcher(component):
 
         yield 1
 
+class NodePurgeDispatcher(component):
+    
+    Inboxes = {"inbox"              : "bridge.Element instance",
+               "control"            : "Shutdown the client stream",
+               "forward"            : "headstock.api.contact.Message instance to be sent back to the client. Transforms the instance to a bridge.Element instance and puts it into the 'outbox'",
+               }
+    
+    Outboxes = {"outbox"       : "bridge.Element instance",
+                "signal"       : "Shutdown signal",
+                "log"          : "log",
+                "unknown"      : "Unknown element that could not be dispatched properly",
+                "xmpp.get"     : "Activity requests",
+                "xmpp.set"     : "Activity responses",
+                "xmpp.result"  : "Activity responses",
+                "xmpp.error"   : "Activity response error",
+                }
+    
+    def __init__(self):
+       super(NodePurgeDispatcher, self).__init__() 
+
+    def main(self):
+        yield 1
+
+        while 1:
+            if self.dataReady("control"):
+                mes = self.recv("control")
+                
+                if isinstance(mes, shutdownMicroprocess) or isinstance(mes, producerFinished):
+                    self.send(producerFinished(), "signal")
+                    break
+
+            if self.dataReady("forward"):
+                s = self.recv("forward")
+                self.send(Node.to_purge_element(s), "outbox")
+
+            if self.dataReady("inbox"):
+                handled = False
+                a = self.recv("inbox")
+                e = a.xml_parent.xml_parent
+                self.send(('INCOMING', e), "log")
+                
+                msg_type = e.get_attribute_value(u'type') or 'get'
+                key = 'xmpp.%s' % unicode(msg_type)
+
+                if key in self.outboxes:
+                    self.send(Node.from_purge_element(e), key)
+                    handled = True
+
+                if not handled:
+                    self.send(e, "unknown")
+                    
+            if not self.anyReady():
+                self.pause()
+  
+            yield 1
+
+        yield 1
+
 class ItemPublicationDispatcher(component):
     
     Inboxes = {"inbox"              : "bridge.Element instance",
@@ -406,6 +465,8 @@ class PubSubDispatcher(component):
                "control"             : "Shutdown the client stream",
                "create.inbox"        : "",
                "create.forward"      : "",
+               "purge.inbox"        : "",
+               "purge.forward"      : "",
                "delete.inbox"        : "",
                "delete.forward"      : "",
                "subscribe.inbox"     : "",
@@ -417,14 +478,18 @@ class PubSubDispatcher(component):
                "retract.inbox"       : "",
                "retract.forward"     : "",
                "message.inbox"       : "",
+               "in.create.error"        : "Publish items response error",
                "in.create.get"          : "Publish items requests",
                "in.create.set"          : "Publish items responses",
                "in.create.result"       : "Publish items responses",
+               "in.purge.error"        : "Publish items response error",
+               "in.purge.get"          : "Publish items requests",
+               "in.purge.set"          : "Publish items responses",
+               "in.purge.result"       : "Publish items responses",
                "in.delete.error"        : "Publish items response error",
                "in.delete.get"          : "Publish items requests",
                "in.delete.set"          : "Publish items responses",
                "in.delete.result"       : "Publish items responses",
-               "in.create.error"        : "Publish items response error",
                "in.subscribe.get"       : "Publish items requests",
                "in.subscribe.set"       : "Publish items responses",
                "in.subscribe.result"    : "Publish items responses",
@@ -447,6 +512,7 @@ class PubSubDispatcher(component):
                 "unknown"                 : "Unknown element that could not be dispatched properly",
                 "log"                     : "log",
                 "create.outbox"           : "",
+                "purge.outbox"            : "",
                 "delete.outbox"           : "",
                 "subscribe.outbox"        : "",
                 "unsubscribe.outbox"      : "",
@@ -456,6 +522,10 @@ class PubSubDispatcher(component):
                 "out.create.get"          : "Publish items requests",
                 "out.create.set"          : "Publish items responses",
                 "out.create.result"       : "Publish items responses",
+                "out.purge.error"        : "Publish items response error",
+                "out.purge.get"          : "Publish items requests",
+                "out.purge.set"          : "Publish items responses",
+                "out.purge.result"       : "Publish items responses",
                 "out.delete.error"        : "Publish items response error",
                 "out.delete.get"          : "Publish items requests",
                 "out.delete.set"          : "Publish items responses",
@@ -533,6 +603,23 @@ class PubSubDispatcher(component):
         self.link((nodecreatedisp, 'log'), (self, 'log'), passthrough=2)
         self.addChildren(nodecreatedisp)
         nodecreatedisp.activate()
+
+        nodepurgedisp = NodePurgeDispatcher()
+        self.link((self, 'purge.inbox'), (nodepurgedisp, 'inbox'), passthrough=1)
+        self.link((self, 'purge.forward'), (nodepurgedisp, 'forward'), passthrough=1)
+        self.link((self, 'in.purge.get'), (nodepurgedisp, 'forward'), passthrough=1)
+        self.link((self, 'in.purge.set'), (nodepurgedisp, 'forward'), passthrough=1)
+        self.link((self, 'in.purge.result'), (nodepurgedisp, 'forward'), passthrough=1)
+        self.link((self, 'in.purge.error'), (nodepurgedisp, 'forward'), passthrough=1)
+        self.link((nodepurgedisp, 'outbox'), (self, 'purge.outbox'), passthrough=2)
+        self.link((nodepurgedisp, 'xmpp.get'), (self, 'out.purge.get'), passthrough=2)
+        self.link((nodepurgedisp, 'xmpp.set'), (self, 'out.purge.set'), passthrough=2)
+        self.link((nodepurgedisp, 'xmpp.result'), (self, 'out.purge.result'), passthrough=2)
+        self.link((nodepurgedisp, 'xmpp.error'), (self, 'out.purge.error'), passthrough=2)
+        self.link((nodepurgedisp, 'unknown'), (self, 'unknown'), passthrough=2)
+        self.link((nodepurgedisp, 'log'), (self, 'log'), passthrough=2)
+        self.addChildren(nodepurgedisp)
+        nodepurgedisp.activate()
 
         nodedeletedisp = NodeDeletionDispatcher()
         self.link((self, 'delete.inbox'), (nodedeletedisp, 'inbox'), passthrough=1)

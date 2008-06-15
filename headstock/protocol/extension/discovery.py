@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from headstock.api.discovery import FeaturesDiscovery, ItemsDiscovery,\
-    SubscriptionsDiscovery
+    SubscriptionsDiscovery, AffiliationsDiscovery
 from bridge import Element as E
 from bridge import Attribute as A
 from bridge.common import XMPP_DISCO_INFO_NS, XMPP_DISCO_ITEMS_NS
@@ -11,7 +11,8 @@ from Axon.Ipc import shutdownMicroprocess, producerFinished
 
 
 __all__ = ['FeaturesDiscoveryDispatcher', 'ItemsDiscoveryDispatcher',
-           'SubscriptionsDiscoveryDispatcher', 'DiscoveryDispatcher']
+           'SubscriptionsDiscoveryDispatcher', 'AffiliationsDiscoveryDispatcher',
+           'DiscoveryDispatcher']
 
 class FeaturesDiscoveryDispatcher(component):
     
@@ -156,9 +157,8 @@ class SubscriptionsDiscoveryDispatcher(component):
 
             if self.dataReady("inbox"):
                 handled = False
-                e = self.recv("inbox")
-                e = e.xml_parent.xml_parent
-                print e.xml()
+                s = self.recv("inbox")
+                e = s.xml_parent.xml_parent
                 self.send(('INCOMING', e), "log")
                 
                 msg_type = e.get_attribute_value(u'type') or u'get'
@@ -176,14 +176,70 @@ class SubscriptionsDiscoveryDispatcher(component):
   
             yield 1
 
+class AffiliationsDiscoveryDispatcher(component):
+    
+    Inboxes = {"inbox"              : "bridge.Element instance",
+               "control"            : "Shutdown the client stream",
+               "forward"            : "headstock.api.contact.Message instance to be sent back to the client. Transforms the instance to a bridge.Element instance and puts it into the 'outbox'",
+               }
+    
+    Outboxes = {"outbox"       : "bridge.Element instance",
+                "signal"       : "Shutdown signal",
+                "log"          : "log",
+                "unknown"      : "Unknown element that could not be dispatched properly",
+                "xmpp.get"     : "Activity requests",
+                "xmpp.set"     : "Activity requests",
+                "xmpp.result"  : "Activity responses",
+                "xmpp.error"   : "Activity response error",
+                }
+    
+    def __init__(self):
+       super(AffiliationsDiscoveryDispatcher, self).__init__() 
+
+    def main(self):
+        while 1:
+            if self.dataReady("control"):
+                mes = self.recv("control")
+                
+                if isinstance(mes, shutdownMicroprocess) or isinstance(mes, producerFinished):
+                    self.send(producerFinished(), "signal")
+                    break
+
+            if self.dataReady("forward"):
+                m = self.recv("forward")
+                self.send(AffiliationsDiscovery.to_element(m), "outbox")
+
+            if self.dataReady("inbox"):
+                handled = False
+                s = self.recv("inbox")
+                e = s.xml_parent.xml_parent
+                self.send(('INCOMING', e), "log")
+                
+                msg_type = e.get_attribute_value(u'type') or u'get'
+                key = 'xmpp.%s' % unicode(msg_type)
+
+                if key in self.outboxes:
+                    self.send(AffiliationsDiscovery.from_element(e), key)
+                    handled = True
+
+                if not handled:
+                    self.send(e, "unknown")
+
+            if not self.anyReady():
+                self.pause()
+  
+            yield 1
+
 class DiscoveryDispatcher(component):
     Inboxes = {"inbox"              : "bridge.Element instance",
                "control"            : "Shutdown the client stream",
                "features.inbox": "",
                "subscription.inbox": "",
+               "affiliation.inbox": "",
                "items.inbox": "",
                "features.forward": "",
                "subscription.forward": "",
+               "affiliation.forward": "",
                "items.forward": "",
                "in.features.get"     : "Activity requests",
                "in.features.set"     : "Activity requests",
@@ -196,7 +252,11 @@ class DiscoveryDispatcher(component):
                "in.subscription.get"     : "Activity requests",
                "in.subscription.set"     : "Activity requests",
                "in.subscription.result"  : "Activity responses",
-               "in.subscription.error"   : "Activity response error",}
+               "in.subscription.error"   : "Activity response error",
+               "in.affiliation.get"     : "Activity requests",
+               "in.affiliation.set"     : "Activity requests",
+               "in.affiliation.result"  : "Activity responses",
+               "in.affiliation.error"   : "Activity response error",}
     
     Outboxes = {"outbox"       : "bridge.Element instance",
                 "signal"       : "Shutdown signal",
@@ -204,6 +264,7 @@ class DiscoveryDispatcher(component):
                 "unknown"      : "Unknown element that could not be dispatched properly",
                 "features.outbox": "",
                 "subscription.outbox": "",
+                "affiliation.outbox": "",
                 "items.outbox": "",
                 "out.features.get"     : "Activity requests",
                 "out.features.set"     : "Activity requests",
@@ -217,6 +278,10 @@ class DiscoveryDispatcher(component):
                 "out.subscription.set"     : "Activity requests",
                 "out.subscription.result"  : "Activity responses",
                 "out.subscription.error"   : "Activity response error",
+                "out.affiliation.get"     : "Activity requests",
+                "out.affiliation.set"     : "Activity requests",
+                "out.affiliation.result"  : "Activity responses",
+                "out.affiliation.error"   : "Activity response error",
                 }
     
     def __init__(self):
@@ -238,7 +303,24 @@ class DiscoveryDispatcher(component):
         self.link((subdisp, 'unknown'), (self, 'unknown'), passthrough=2)
         self.link((subdisp, 'log'), (self, 'log'), passthrough=2)
         self.addChildren(subdisp)
-        subdisp.activate()
+        subdisp.activate()      
+
+        affdisp = AffiliationsDiscoveryDispatcher()
+        self.link((self, 'affiliation.inbox'), (affdisp, 'inbox'), passthrough=1)
+        self.link((self, 'affiliation.forward'), (affdisp, 'forward'), passthrough=1)
+        self.link((self, 'in.affiliation.get'), (affdisp, 'forward'), passthrough=1)
+        self.link((self, 'in.affiliation.set'), (affdisp, 'forward'), passthrough=1)
+        self.link((self, 'in.affiliation.result'), (affdisp, 'forward'), passthrough=1)
+        self.link((self, 'in.affiliation.error'), (affdisp, 'forward'), passthrough=1)
+        self.link((affdisp, 'outbox'), (self, 'affiliation.outbox'), passthrough=2)
+        self.link((affdisp, 'xmpp.get'), (self, 'out.affiliation.get'), passthrough=2)
+        self.link((affdisp, 'xmpp.set'), (self, 'out.affiliation.set'), passthrough=2)
+        self.link((affdisp, 'xmpp.result'), (self, 'out.affiliation.result'), passthrough=2)
+        self.link((affdisp, 'xmpp.error'), (self, 'out.affiliation.error'), passthrough=2)
+        self.link((affdisp, 'unknown'), (self, 'unknown'), passthrough=2)
+        self.link((affdisp, 'log'), (self, 'log'), passthrough=2)
+        self.addChildren(affdisp)
+        affdisp.activate()
     
         featdisp = FeaturesDiscoveryDispatcher()
         self.link((self, 'features.inbox'), (featdisp, 'inbox'), passthrough=1)

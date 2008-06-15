@@ -22,7 +22,7 @@ class Presence(Entity):
         self.foreign = []
 
     def __repr__(self):
-        return '<Presence %s (%s) at %s>' % (str(self.from_jid), self.subscription, hex(id(self)))
+        return '<Presence %s (%s) at %s>' % (str(self.from_jid), self.type, hex(id(self)))
 
     @staticmethod
     def from_element(e):

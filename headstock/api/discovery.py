@@ -13,7 +13,7 @@ from bridge.common import XMPP_DISCO_INFO_NS, XMPP_DISCO_ITEMS_NS, \
      XMPP_DATA_FORM_NS, XMPP_CLIENT_NS, XMPP_STREAM_NS, XMPP_PUBSUB_NS
 
 __all__ = ['FeaturesDiscovery', 'ItemsDiscovery',
-           'SubscriptionsDiscovery']
+           'SubscriptionsDiscovery', 'AffiliationsDiscovery']
 
 class Identity(object):
     def __init__(self, name=None, category=None, type=None):
@@ -50,6 +50,14 @@ class Subscription(object):
     def __repr__(self):
         return '<Subscription %s [%s:%s] at %s>' % (str(self.jid), self.node, 
                                                     self.state, hex(id(self)))
+
+class Affiliation(object):
+    def __init__(self, node, affiliation):
+        self.node = node
+        self.affiliation = affiliation
+
+    def __repr__(self):
+        return '<Affiliation %s (%s) at %s>' % (self.node, self.affiliation, hex(id(self)))
 
 class FeaturesDiscovery(Entity):
     def __init__(self, from_jid, to_jid, node_name=None, type=u'get', stanza_id=None):
@@ -171,19 +179,63 @@ class SubscriptionsDiscovery(Entity):
                                        JID.parse(e.get_attribute_value('to')),
                                        type=e.get_attribute_value('type'),
                                        stanza_id=e.get_attribute_value('id'))
-
         for c in e.xml_children:
             if not isinstance(c, E):
                 continue
 
-            if c.xml_ns == XMPP_PUBSUB_NS:
-                if c.xml_name == 'subscriptions':
-                    for i in c.xml_children:
-                        if i.xml_name == 'subscription' and i.xml_ns == XMPP_DISCO_ITEMS_NS:
-                            jid = JID.parse(unicode(i.get_attribute_value('jid')))
-                            item = Subscription(i.get_attribute_value('node'),
-                                                jid, i.get_attribute_value('subscription'))
-                            disco.subscriptions.append(item)
+            if c.xml_ns == XMPP_PUBSUB_NS and c.xml_name == 'pubsub':
+                for p in c.xml_children:                    
+                    if not isinstance(p, E):
+                        continue
+                    if p.xml_ns == XMPP_PUBSUB_NS and p.xml_name == 'subscriptions':   
+                        for s in p.xml_children:                    
+                            if not isinstance(s, E):
+                                continue
+                            jid = s.get_attribute_value('jid', None)
+                            if jid:
+                                JID.parse(jid)
+                            sub = Subscription(s.get_attribute_value('node'), jid,
+                                               s.get_attribute_value('subscription'))
+                            disco.subscriptions.append(sub)
+            elif c.xml_ns == XMPP_CLIENT_NS and c.xml_name == 'error':
+                disco.error = Error.from_element(c)
+
+        return disco
+
+class AffiliationsDiscovery(Entity):
+    def __init__(self, from_jid, to_jid, type=u'get', stanza_id=None):
+        Entity.__init__(self, from_jid, to_jid, type, stanza_id)
+        self.affiliations  = []
+    
+    @staticmethod
+    def to_element(e):
+        iq = Entity.to_element(e)
+        query = E(u'query', namespace=XMPP_PUBSUB_NS, parent=iq)
+        E('affiliations', namespace=XMPP_PUBSUB_NS, parent=query)
+
+        return iq
+
+    @staticmethod
+    def from_element(e):
+        disco = AffiliationsDiscovery(JID.parse(e.get_attribute_value('from')),
+                                       JID.parse(e.get_attribute_value('to')),
+                                       type=e.get_attribute_value('type'),
+                                       stanza_id=e.get_attribute_value('id'))
+        for c in e.xml_children:
+            if not isinstance(c, E):
+                continue
+
+            if c.xml_ns == XMPP_PUBSUB_NS and c.xml_name == 'pubsub':
+                for p in c.xml_children:                    
+                    if not isinstance(p, E):
+                        continue
+                    if p.xml_ns == XMPP_PUBSUB_NS and p.xml_name == 'affiliations':   
+                        for s in p.xml_children:                    
+                            if not isinstance(s, E):
+                                continue
+                            aff = Affiliation(s.get_attribute_value('node'),
+                                              s.get_attribute_value('affiliation'))
+                            disco.affiliations.append(aff)
             elif c.xml_ns == XMPP_CLIENT_NS and c.xml_name == 'error':
                 disco.error = Error.from_element(c)
 
