@@ -8,5 +8,10 @@
 
     <link rel="stylesheet" type="text/css" href="/css/reset-fonts-grids.css" />
     <link rel="stylesheet" type="text/css" href="/css/style.css" media="screen" />
+    <link rel="service" type="application/atomsvc+xml" href="/service" />
+    <link rel="alternate" type="application/atom+xml" href="/profile/feed" />
+    %if collection is not UNDEFINED:
+    <link rel="alternate" type="application/atom+xml" href="${collection.get_base_edit_uri()}/feed" />
+    %endif
     </script>
   </head>

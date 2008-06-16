@@ -9,7 +9,7 @@
       </div>
       <div id="bd">
 	<div id="yui-main">
-	  % for member in collection.iter_members(0, 10):
+	%if member is not UNDEFINED and member:
 	  <div class="bubble">
 	    <blockquote>
 	      <p>${unicode(member.atom.entry.content)}</p>
@@ -17,7 +17,7 @@
 	    <cite><strong>${unicode(member.atom.entry.author.name)}</strong> 
 	      on ${format_date(str(member.atom.entry.published))}</cite>
 	  </div>
-	  % endfor
+	%endif
 	</div>
       </div>
       <div id="ft">
