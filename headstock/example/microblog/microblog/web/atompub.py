@@ -43,6 +43,7 @@ class CollectionHandler(object):
     
     def __init__(self, collection):
         self.collection = collection
+        self.most_recent_member = None
 
     ##########################################
     # Helpers
@@ -115,7 +116,7 @@ class CollectionHandler(object):
         
         member = ResourceWrapper(self.collection, media_type=mimetype)
         content = member.generate(mimetype, source=cherrypy.request.body, slug=slug,
-                                  length=length, preserve_dates=False)
+                                  length=length, preserve_dates=True)
         member.inherit_categories_from_collection()
         
         media_content = None
@@ -149,6 +150,8 @@ class CollectionHandler(object):
             
         cherrypy.response.headers['Content-Type'] = u'application/atom+xml;type=entry'
         cherrypy.response.headers['ETag'] = compute_etag_from_entry(member.atom)
+
+        self.most_recent_member = member
 
         return member.xml(indent=True)
         
