@@ -22,6 +22,7 @@ from amplee.utils import extract_url_trail, get_isodate,\
 from amplee.error import ResourceOperationException
 
 from microblog.atompub.resource import ResourceWrapper
+from microblog.jabber.atomhandler import FeedReaderComponent
 
 __all__ = ['DiscoHandler', 'ItemsHandler', 'MessageHandler']
 
@@ -233,13 +234,17 @@ class ItemsHandler(component):
                "topurge": "",
                "control"    : "", 
                "xmpp.result": "",
-               "jid"        : "",}
+               "jid"        : "",
+               "_feedresponse": "",
+               "_delresponse": ""}
     
     Outboxes = {"outbox"  : "",
                 "publish" : "",
                 "delete"  : "",
                 "purge"   : "",
-                "signal"  : "Shutdown signal",}
+                "signal"  : "Shutdown signal",
+                "_feedrequest": "",
+                "_delrequest": ""}
 
     def __init__(self, from_jid, atompub, host='localhost', session_id=None, profile=None):
         super(ItemsHandler, self).__init__() 
@@ -258,6 +263,23 @@ class ItemsHandler(component):
         self.link((sub, 'outbox'), (self, 'jid'))
         self.addChildren(sub)
         sub.activate()
+
+        feedreader = FeedReaderComponent(use_etags=False)
+        self.addChildren(feedreader)
+        feedreader.activate()
+        
+        client = SimpleHTTPClient()
+        self.addChildren(client)
+        self.link((self, '_feedrequest'), (client, 'inbox')) 
+        self.link((client, 'outbox'), (feedreader, 'inbox'))
+        self.link((feedreader, 'outbox'), (self, '_feedresponse'))
+        client.activate()
+
+        client = SimpleHTTPClient()
+        self.addChildren(client)
+        self.link((self, '_delrequest'), (client, 'inbox')) 
+        self.link((client, 'outbox'), (self, '_delresponse'))
+        client.activate()
 
         return 1
 
@@ -293,7 +315,6 @@ class ItemsHandler(component):
                 node = self.pubsub_top_level_node
                 if m:
                     node, message = m.groups()
-                print node, message
                 uuid, entry = self.make_entry(message)
                 i = Item(id=uuid, payload=entry)
                 p = Node(unicode(self.from_jid), u'pubsub.%s' % self.xmpphost,
@@ -314,7 +335,21 @@ class ItemsHandler(component):
                 p = Node(unicode(self.from_jid), u'pubsub.%s' % self.xmpphost,
                          node_name=self.pubsub_top_level_node)
                 self.send(p, "purge")
-                yield 1
+
+                params = {'url': '%s/feed' % (self.collection.get_base_edit_uri().rstrip('/')), 
+                          'method': 'GET'}
+                self.send(params, '_feedrequest') 
+
+            if self.dataReady("_feedresponse"):
+                feed = self.recv("_feedresponse")
+                for entry in feed.entries:
+                    for link in entry.links:
+                        if link.rel == 'edit':
+                            params = {'url': link.href, 'method': 'DELETE'}
+                            self.send(params, '_delrequest') 
+
+            if self.dataReady("_delresponse"):
+                self.recv("_delresponse")
 
             if not self.anyReady():
                 self.pause()
@@ -347,11 +382,11 @@ class MessageHandler(component):
         self.addChildren(sub)
         sub.activate()
 
-        self.client = SimpleHTTPClient()
-        self.addChildren(self.client)
-        self.link((self, '_request'), (self.client, 'inbox')) 
-        self.link((self.client, 'outbox'), (self, '_response')) 
-        self.client.activate()
+        client = SimpleHTTPClient()
+        self.addChildren(client)
+        self.link((self, '_request'), (client, 'inbox')) 
+        self.link((client, 'outbox'), (self, '_response')) 
+        client.activate()
 
         return 1
 

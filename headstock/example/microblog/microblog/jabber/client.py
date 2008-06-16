@@ -505,11 +505,11 @@ class Client(component):
 
     @staticmethod
     def connect_jabber_user(atompub, username, password, profile):
-        c = Client(atompub, unicode(username), unicode(password), 
-                   domain=Client.Domain, server=Client.Host, port=Client.Port,
-                   usetls=True, register=False, profile=profile)
-        Client.Sessions[c.username] = c
-        c.activate()
+        #c = Client(atompub, unicode(username), unicode(password), 
+        #           domain=Client.Domain, server=Client.Host, port=Client.Port,
+        #           usetls=True, register=False, profile=profile)
+        #Client.Sessions[c.username] = c
+        #c.activate()
         
         username = unicode('%s.microblogging' % username)
         c = Client(atompub, unicode(username), unicode(password), 

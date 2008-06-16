@@ -13,9 +13,10 @@ class FeedReaderComponent(component):
     Outboxes = {"outbox"  : "",
                 "signal"  : "Shutdown signal"}
 
-    def __init__(self):
+    def __init__(self, use_etags=True):
         super(FeedReaderComponent, self).__init__()
         self.last = None
+        self.use_etags = use_etags
 
     def main(self):
         while 1:
@@ -29,14 +30,14 @@ class FeedReaderComponent(component):
 
             if self.dataReady("inbox"):
                 url = self.recv("inbox")
-                if self.last:
+                if self.use_etags and self.last and self.last.etag:
                     d = feedparser.parse(url, etag=self.last.etag)
                 else:
                     d = feedparser.parse(url)
                 
                 if d:
                     self.last = d
-                    if d.bozo == 0 and d.status != 304:
+                    if d.bozo == 0 and getattr(d, 'status', 200) != 304:
                         self.send(d, "outbox")
 
             if not self.anyReady():
