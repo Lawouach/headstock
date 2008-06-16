@@ -81,14 +81,14 @@ input[type=text],input[type=password],textarea{width:12.25em;*width:11.9em;}
 #hd{
 	height:60px; 
 	margin:0px; 
-	padding:0px;
+	padding-top: 20px;
 }
 
 #ft{
 	height:50px; 
 	border-top:#FFFFFF 2px solid;
 	margin:0px; 
-	padding:0px;
+	padding-top:20px;
 }
 
 div.persona-key label {
@@ -139,4 +139,13 @@ div.bubble cite {
 	top: 6px; /* 1px less than padding-top */
 	background: transparent url(/images/tip.gif) no-repeat 20px 0;
 	font-style: normal;
+}
+
+#headerlogo {
+	font-family: courier, serif;
+	font-size: 35px;
+	font-weight: bold; 
+}
+
+#footerrights {
 }

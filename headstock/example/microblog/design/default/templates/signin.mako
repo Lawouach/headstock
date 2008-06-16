@@ -1,7 +1,7 @@
 <%include file="/header.mako"/>
   <body>
     <div id="doc" class="yui-t3">
-      <div id="hd"></div>
+      <div id="hd"><span id="headerlogo">speak up</span></div>
       <div id="bd">
 	<div id="yui-main">
 	  <div id="container-1">

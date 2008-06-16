@@ -1,3 +1,6 @@
+<%!
+    from microblog.utils import format_date
+%>
 <%include file="/header.mako"/>
   <body>
     <div id="doc" class="yui-t3">
@@ -6,7 +9,15 @@
       </div>
       <div id="bd">
 	<div id="yui-main">
-	  Welcome back. 
+	  % for member in collection.iter_members(0, 10):
+	  <div class="bubble">
+	    <blockquote>
+	      <p>${unicode(member.atom.entry.content)}</p>
+	    </blockquote>
+	    <cite><strong>${unicode(member.atom.entry.author.name)}</strong> 
+	      on ${format_date(str(member.atom.entry.published))}</cite>
+	  </div>
+	  % endfor
 	</div>
       </div>
       <div id="ft">
