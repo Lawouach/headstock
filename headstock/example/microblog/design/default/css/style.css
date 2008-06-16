@@ -102,7 +102,7 @@ div.persona-key label {
     background-position: left center;
     background-repeat: no-repeat;
     padding-left: 1.5em;
-    width: 300px;
+    width: 200px;
 }
 
 .error-message {
@@ -116,7 +116,7 @@ div.persona-key label {
 /* from http://www.willmayo.com/2007/02/10/css-speech-bubbles/ */
 /* Normal Bubble */
 div.bubble {
-	width: auto;
+	width: 400px;
 	font-size: 0.75em;
 	margin-bottom: 24px;
 }
