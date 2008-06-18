@@ -5,7 +5,8 @@ from microblog.web.oidtool import DEFAULT_SESSION_NAME
 from microblog.profile.manager import ProfileManager
 from microblog.profile.user import EmptyUserProfile, UserProfile
 from microblog.web.speakup import SpeakUpWebApplication
-from microblog.web.atompub import CollectionHandler, CollectionPagingHandler
+from microblog.web.atompub import CollectionHandler, CollectionPagingHandler,\
+    CollectionTagingHandler
 
 __all__ = ['WebApplication']
 
@@ -86,17 +87,20 @@ class WebApplication(object):
 
     def attach_serving_collection_application(self, c, profile, d):
         profile_name = profile.username
-        controller = CollectionHandler(c)
         route = '/%s' % profile_name.encode('utf-8')
+
+        controller = CollectionPagingHandler(c)
+        d.add('%s/paging' % route, GET=controller.GET)
+
+        controller = CollectionTagingHandler(c)
+        d.add('%s/tag/{tag}' % route, GET=controller.index)
+
+        controller = CollectionHandler(c)
         speakup = SpeakUpWebApplication(self.base_dir, self.atompub, 
                                         self.tpl_lookup, profile, controller)
-
         d.add('%s[/]' % route, GET=speakup.index,
               POST=controller.create)
         d.add('%s/feed' % route, GET=controller.feed)
         d.add('%s/{id:any}' % route, GET=controller.retrieve,
               PUT=controller.replace,
               DELETE=controller.remove)
-
-        controller = CollectionPagingHandler(c)
-        d.add('%s/paging' % route, GET=controller.GET)

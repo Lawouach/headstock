@@ -21,7 +21,7 @@ from microblog.profile.manager import ProfileManager
 from microblog.atompub.resource import ResourceWrapper
 
 __all__ = ['AtomPubWebApplication', 'CollectionHandler',
-           'CollectionPagingHandler']
+           'CollectionPagingHandler', 'CollectionTagingHandler']
 
 class AtomPubWebApplication(object):
     def __init__(self, base_dir, atompub, tpl_lookup):
@@ -237,3 +237,20 @@ class CollectionPagingHandler(object):
         cherrypy.response.headers['etag'] = compute_etag_from_feed(feed)
         cherrypy.response.headers['content-type'] = 'application/atom+xml;type=feed'
         return feed.xml(indent=True)
+
+class CollectionTagingHandler(object):
+    def __init__(self, collection):
+        self.collection = collection
+        self.cat_index = self.collection.indexers[0].retrieve('ci')
+
+    def index(self, tag):
+        res = self.cat_index.lookup(term=tag)
+        if res:
+            member_ids = [member_id for collection, member_id in res]
+            members = self.collection.reload_members_from_list(member_ids)
+            feed = self.collection.to_feed(members=members)
+            cherrypy.response.headers['etag'] = compute_etag_from_feed(feed)
+            cherrypy.response.headers['content-type'] = 'application/atom+xml;type=feed'
+            return feed.xml(indent=True)
+
+        return "No results"

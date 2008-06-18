@@ -297,7 +297,7 @@ class ItemsHandler(component):
 
         return 1
 
-    def make_entry(self, msg):
+    def make_entry(self, msg, node):
         uuid = generate_uuid_uri()
         entry = E.load('./entry.atom').xml_root
         entry.get_child('id', ns=entry.xml_ns).xml_text =  uuid
@@ -306,6 +306,13 @@ class ItemsHandler(component):
         entry.get_child('published', ns=entry.xml_ns).xml_text = dt
         entry.get_child('updated', ns=entry.xml_ns).xml_text = dt
         entry.get_child('content', ns=entry.xml_ns).xml_text = unicode(msg)
+
+        if node != self.pubsub_top_level_node:
+            tag = extract_url_trail(node)
+            E(u'category', namespace=entry.xml_ns, prefix=entry.xml_prefix,
+              attributes={u'term': unicode(tag)}, parent=entry)
+        
+        print entry.xml()
         return uuid, entry
         
     def main(self):
@@ -329,7 +336,7 @@ class ItemsHandler(component):
                 node = self.pubsub_top_level_node
                 if m:
                     node, message = m.groups()
-                uuid, entry = self.make_entry(message)
+                uuid, entry = self.make_entry(message, node)
                 i = Item(id=uuid, payload=entry)
                 p = Node(unicode(self.from_jid), u'pubsub.%s' % self.xmpphost,
                          node_name=unicode(node), item=i)
