@@ -188,7 +188,6 @@ class DummyMessageHandler(component):
                 elif isinstance(m, Message):
                     for body in m.bodies:
                         message = remove_BOM(body.plain_body).strip()
-                        print repr(message)
                         if message == 'help':
                             m = Message(self.from_jid, m.from_jid)
                             b = """<ul>
@@ -205,6 +204,7 @@ class DummyMessageHandler(component):
                             m.bodies.append(XHTMLBody(b))
                             self.send(m, 'outbox')
                         else:
+                            print "Received message: %s" % repr(message)
                             try:
                                 action, data = message.split(' ', 1)
                             except ValueError:
@@ -303,12 +303,12 @@ class PresenceHandler(component):
             if self.dataReady("jid"):
                 self.from_jid = self.recv('jid')
 
-                if '.microblogging' not in unicode(self.from_jid):
-                     sibling = JID(unicode('%s.microblogging' % self.from_jid.node),
-                                   self.from_jid.domain)
-                     p = Presence(from_jid=self.from_jid, to_jid=unicode(sibling),
-                                  type=u'subscribe')
-                     self.send(p, "outbox")
+                #if '.microblogging' in unicode(self.from_jid):
+                #    sibling = JID(unicode('%s.microblogging' % self.from_jid.node),
+                #                  self.from_jid.domain)
+                #    p = Presence(from_jid=self.from_jid, to_jid=unicode(sibling),
+                #                 type=u'subscribe')
+                #    self.send(p, "outbox")
 
             if self.dataReady("subscribe"):
                 p = self.recv("subscribe")
@@ -696,8 +696,8 @@ class Client(component):
                                            ("discodisp", "out.features.result"): ('discohandler', "features.result"),
                                            ("discodisp",'subscription.outbox'):('xmpp','forward'),
                                            ("discodisp",'affiliation.outbox'):('xmpp','forward'),
-                                           ("discodisp",'out.subscription.result'):('discohandler','subscriptions.result'),
-                                           ("discodisp",'out.affiliation.result'):('discohandler','affiliations.result'),
+                                           ("discodisp",'out.subscription.result'): ('discohandler','subscriptions.result'),
+                                           ("discodisp",'out.affiliation.result'): ('discohandler','affiliations.result'),
                                            ("discodisp", 'out.items.result'): ('discohandler', 'items.result'),
                                            ("discodisp", 'out.items.error'): ('discohandler', 'items.error'),
                                            ("discodisp", "outbox"): ("xmpp", "forward"),
@@ -739,9 +739,13 @@ class Client(component):
                                            ("pubsubdisp", "publish.outbox"): ("xmpp", "forward"),
                                            ("pubsubdisp", "retract.outbox"): ("xmpp", "forward"),
                                            ("pubsubdisp", "out.create.result"): ("discohandler", "created"),
+                                           ("pubsubdisp", "out.subscribe.result"): ("discohandler", "subscribed"),
                                            ("pubsubdisp", "out.delete.result"): ("discohandler", "deleted"),
                                            ("pubsubdisp", "out.create.error"): ("discohandler", "error"),
                                            ("pubsubdisp", "out.delete.error"): ("discohandler", "error"),
+                                           ("pubsubdisp", "out.publish.error"): ("itemshandler", "publish.error"),
+                                           ("pubsubdisp", "out.retract.error"): ("itemshandler", "retract.error"),
+                                           ("pubsubdisp", "out.publish.result"): ("itemshandler", "published"),
                                            ("pubsubdisp", "out.message"): ('pubsubmsgeventhandler', 'inbox'),
                                            ('itemshandler', 'publish'): ('pubsubdisp', 'publish.forward'),
                                            ('itemshandler', 'delete'): ('pubsubdisp', 'retract.forward'),
@@ -783,7 +787,7 @@ class Client(component):
 
             if self.dataReady("unhandled"):
                 msg = self.recv('unhandled')
-                #self.send(('UNHANDLED', msg), 'log')
+                self.send(('UNHANDLED', msg), 'log')
                 
             if self.dataReady("inbox"):
                 msg = self.recv('inbox')

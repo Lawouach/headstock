@@ -27,6 +27,7 @@ from microblog.jabber.atomhandler import FeedReaderComponent
 __all__ = ['DiscoHandler', 'ItemsHandler', 'MessageHandler']
 
 publish_item_rx = re.compile(r'\[(.*)\] ([\w ]*)')
+retract_item_rx = re.compile(r'\[(.*)\] ([\w:\-]*)')
 
 
 class DiscoHandler(component):
@@ -43,6 +44,7 @@ class DiscoHandler(component):
                "dodelete" : "",
                "dounsubscribe" : "",
                "dosubscribe" : "",
+               "subscribed": "",
                "subscriptions.result": "",
                "affiliations.result": "",
                "created": "",
@@ -69,9 +71,15 @@ class DiscoHandler(component):
         self.xmpphost = host
         self.session_id = session_id
         self.profile = profile
-        if profile:
-            self.collection = self.atompub.get_collection(profile.username)
+        self._collection = None
         self.pubsub_top_level_node = u'home/%s/%s' % (self.xmpphost, self.from_jid.node)
+
+    @property
+    def collection(self):
+        # Lazy loading of collection
+        if not self._collection:
+            self._collection = self.atompub.get_collection(self.profile.username)
+        return self._collection
 
     def initComponents(self):
         sub = SubscribeTo("JID.%s" % self.session_id)
@@ -138,22 +146,13 @@ class DiscoHandler(component):
                 self.send(disco, 'features-announce')
 
             if self.dataReady('items.result'):
-                items_disco = self.recv('items.result')
-                print "%s has %d item(s)" % (items_disco.node_name, len(items_disco.items))
-                
-                p = Node(unicode(self.from_jid), u'pubsub.%s' % self.xmpphost,
-                         node_name=self.pubsub_top_level_node, sub_jid=self.from_jid.nodeid())
-                self.send(p, "subscribe-node")
+                items = self.recv('items.result')
+                print "%s has %d item(s)" % (items.node_name, len(items.items))
 
-                for item in items_disco.items:
-                    p = Node(unicode(self.from_jid), u'pubsub.%s' % self.xmpphost,
-                             node_name=self.pubsub_top_level_node, sub_jid=self.from_jid.nodeid())
-                    self.send(p, "subscribe-node")
-                    
-                #        n = ItemsDiscovery(unicode(self.from_jid), u'pubsub.%s' % self.xmpphost, 
-                #                           node_name=item.node)
-                #        self.send(n, "items-disco")
-                #        yield 1
+                for item in items.items:
+                    n = ItemsDiscovery(unicode(self.from_jid), u'pubsub.%s' % self.xmpphost, 
+                                       node_name=item.node)
+                    self.send(n, "items-disco")
 
             if self.dataReady('items.error'):
                 items_disco = self.recv('items.error')
@@ -213,7 +212,14 @@ class DiscoHandler(component):
             if self.dataReady('created'):
                 node = self.recv('created')
                 print "Node created: %s" % node.node_name
+                p = Node(unicode(self.from_jid), u'pubsub.%s' % self.xmpphost,
+                         node_name=node.node_name, sub_jid=self.from_jid.nodeid())
+                self.send(p, "subscribe-node")
                 
+            if self.dataReady('subscribed'):
+                node = self.recv('subscribed')
+                print "Node subscribed: %s" % node.node_name
+
             if self.dataReady('deleted'):
                 node = self.recv('deleted')
                 print "Node deleted: %s" % node.node_name
@@ -234,6 +240,9 @@ class ItemsHandler(component):
                "topurge": "",
                "control"    : "", 
                "xmpp.result": "",
+               "published": "",
+               "publish.error": "",
+               "retract.error": "",
                "jid"        : "",
                "_feedresponse": "",
                "_delresponse": ""}
@@ -252,11 +261,16 @@ class ItemsHandler(component):
         self.atompub = atompub
         self.xmpphost = host
         self.session_id = session_id
-        self.collection = None
         self.profile = profile
-        if profile:
-            self.collection = self.atompub.get_collection(profile.username)
+        self._collection = None
         self.pubsub_top_level_node = u'home/%s/%s' % (self.xmpphost, self.from_jid.node)
+
+    @property
+    def collection(self):
+        # Lazy loading of collection
+        if not self._collection:
+            self._collection = self.atompub.get_collection(self.profile.username)
+        return self._collection
 
     def initComponents(self):
         sub = SubscribeTo("JID.%s" % self.session_id)
@@ -318,15 +332,19 @@ class ItemsHandler(component):
                 uuid, entry = self.make_entry(message)
                 i = Item(id=uuid, payload=entry)
                 p = Node(unicode(self.from_jid), u'pubsub.%s' % self.xmpphost,
-                         node_name=node, item=i)
+                         node_name=unicode(node), item=i)
                 self.send(p, "publish")
                 yield 1
 
             if self.dataReady("todelete"):
                 item_id = self.recv("todelete")
+                node = self.pubsub_top_level_node
+                m = retract_item_rx.match(item_id)
+                if m:
+                    node, item_id = m.groups()
                 i = Item(id=unicode(item_id))
                 p = Node(unicode(self.from_jid), u'pubsub.%s' % self.xmpphost,
-                         node_name=self.pubsub_top_level_node, item=i)
+                         node_name=unicode(node), item=i)
                 self.send(p, "delete")
                 yield 1
 
@@ -339,6 +357,18 @@ class ItemsHandler(component):
                 params = {'url': '%s/feed' % (self.collection.get_base_edit_uri().rstrip('/')), 
                           'method': 'GET'}
                 self.send(params, '_feedrequest') 
+
+            if self.dataReady("published"):
+                node = self.recv("published")
+                print "Item published: %s" % node
+
+            if self.dataReady("publish.error"):
+                node = self.recv("publish.error")
+                print node.error
+
+            if self.dataReady("retract.error"):
+                node = self.recv("retract.error")
+                print node.error
 
             if self.dataReady("_feedresponse"):
                 feed = self.recv("_feedresponse")
@@ -374,7 +404,14 @@ class MessageHandler(component):
         self.xmpphost = host
         self.session_id = session_id
         self.profile = profile
-        self.collection = self.atompub.get_collection(profile.username)
+        self._collection = None
+        
+    @property
+    def collection(self):
+        # Lazy loading of collection
+        if not self._collection:
+            self._collection = self.atompub.get_collection(self.profile.username)
+        return self._collection
 
     def initComponents(self):
         sub = SubscribeTo("JID.%s" % self.session_id)
@@ -410,22 +447,26 @@ class MessageHandler(component):
                 
             if self.dataReady("inbox"):
                 msg = self.recv("inbox")
-                for item in msg.items:
-                    if item.event == 'item' and item.payload:
-                        member = self.collection.get_member(item.id)
-                        if not member:
-                            body = item.payload.xml()
-                            params = {'url': self.collection.get_base_edit_uri(), 
-                                      'method': 'POST', 'postbody': body,
-                                      'extraheaders': {'content-type': 'application/atom+xml;type=entry',
-                                                       'content-length': str(len(body)),
-                                                       'slug': item.id}}
+                collection = self.collection
+                if collection:
+                    for item in msg.items:
+                        if item.event == 'item' and item.payload:
+                            print "Published item: %s" % item.id
+                            member = collection.get_member(item.id)
+                            if not member:
+                                body = item.payload.xml()
+                                params = {'url': collection.get_base_edit_uri(), 
+                                          'method': 'POST', 'postbody': body,
+                                          'extraheaders': {'content-type': 'application/atom+xml;type=entry',
+                                                           'content-length': str(len(body)),
+                                                           'slug': item.id}}
+                                self.send(params, '_request') 
+                        elif item.event == 'retract':
+                            print "Removed item: %s" % item.id
+                            params = {'url': '%s/%s' % (collection.get_base_edit_uri().rstrip('/'),
+                                                        item.id.encode('utf-8')), 
+                                      'method': 'DELETE'}
                             self.send(params, '_request') 
-                    elif item.event == 'retract':
-                        params = {'url': '%s/%s' % (self.collection.get_base_edit_uri().rstrip('/'),
-                                                    item.id.encode('utf-8')), 
-                                  'method': 'DELETE'}
-                        self.send(params, '_request') 
 
             if not self.anyReady():
                 self.pause()
