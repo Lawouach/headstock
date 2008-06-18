@@ -13,13 +13,13 @@ def generate_unique(seed=None):
     return unicode(abs(hash(sha.new(seed).hexdigest())))
 
 def remove_BOM(text):
-    if text[0] == codecs.BOM_UTF8.decode("utf-8"):
+    if codecs.BOM_UTF8.decode("utf-8") in text:
         return text.replace(codecs.BOM_UTF8.decode("utf-8"), '')
-    if text[0] == codecs.BOM.decode("utf-16"):
+    if codecs.BOM.decode("utf-16") in text:
         return text.replace(codecs.BOM.decode("utf-16"), '')
-    if text[0] == codecs.BOM_BE.decode("utf-16-be"):
+    if codecs.BOM_BE.decode("utf-16-be") in text:
         return text.replace(codecs.BOM_BE.decode("utf-16-be"), '')
-    if text[0] == codecs.BOM_LE.decode("utf-16-le"):
+    if codecs.BOM_LE.decode("utf-16-le") in text:
         return text.replace(codecs.BOM_LE.decode("utf-16-le"), '')
 
     return text
