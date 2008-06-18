@@ -86,9 +86,10 @@ input[type=text],input[type=password],textarea{width:12.25em;*width:11.9em;}
 
 #ft{
 	height:50px; 
-	border-top:#FFFFFF 2px solid;
+	border-top:#000 0px solid;
 	margin:0px; 
 	padding-top:20px;
+	font-family: courier, serif;
 }
 
 div.persona-key label {
@@ -123,12 +124,13 @@ div.bubble {
 
 div.bubble blockquote {
 	margin: 0px;
-	border: 1px solid #c9c2c1;
+	border: 1px solid #000;
 	background-color: #fff;
 }
 
 div.bubble blockquote p {
 	margin: 10px;
+	font-family: courier, serif;
 }
 
 div.bubble cite {
@@ -139,6 +141,7 @@ div.bubble cite {
 	top: 6px; /* 1px less than padding-top */
 	background: transparent url(/images/tip.gif) no-repeat 20px 0;
 	font-style: normal;
+	font-family: courier, serif;
 }
 
 #headerlogo {

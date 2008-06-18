@@ -14,12 +14,4 @@
       <app:accept>application/xml</app:accept>
     </app:collection>
   </app:workspace>
-  <app:workspace xml:id="workspace-Lawouach">
-    <atom:title xmlns:atom="http://www.w3.org/2005/Atom" type="text">Lawouach</atom:title>
-    <app:collection xml:id="collection-Lawouach" href="Lawouach">
-      <atom:title xmlns:atom="http://www.w3.org/2005/Atom" type="text">Lawouach</atom:title>
-      <atom:link xmlns:atom="http://www.w3.org/2005/Atom" href="Lawouach" type="application/atom+xml;type=feed" rel="alternate"/>
-      <app:accept>application/atom+xml;type=entry</app:accept>
-    </app:collection>
-  </app:workspace>
 </app:service>
