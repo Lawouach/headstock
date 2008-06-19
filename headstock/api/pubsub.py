@@ -93,7 +93,7 @@ class Node(Entity):
                 for p in i.xml_children:
                     if p.xml_ns in [XMPP_PUBSUB_NS]:
                         if p.xml_name == 'create':
-                            node.node_name = p.get_attribute('node')
+                            node.node_name = p.get_attribute_value('node')
             elif i.xml_ns == XMPP_CLIENT_NS and i.xml_name == 'error':
                 node.error = Error.from_element(i)
 
@@ -119,7 +119,7 @@ class Node(Entity):
                 for p in i.xml_children:
                     if p.xml_ns in [XMPP_PUBSUB_NS]:
                         if p.xml_name == 'create':
-                            node.node_name = p.get_attribute('node')
+                            node.node_name = p.get_attribute_value('node')
             elif i.xml_ns == XMPP_CLIENT_NS and i.xml_name == 'error':
                 node.error = Error.from_element(i)
 
@@ -145,7 +145,7 @@ class Node(Entity):
                 for p in i.xml_children:
                     if p.xml_ns in [XMPP_PUBSUB_NS]:
                         if p.xml_name == 'create':
-                            node.node_name = p.get_attribute('node')
+                            node.node_name = p.get_attribute_value('node')
             elif i.xml_ns == XMPP_CLIENT_NS and i.xml_name == 'error':
                 node.error = Error.from_element(i)
 
@@ -171,8 +171,8 @@ class Node(Entity):
                 for p in i.xml_children:
                     if p.xml_ns in [XMPP_PUBSUB_NS]:
                         if p.xml_name == 'subscribe':
-                            sub.node_name = p.get_attribute('node')
-                            sub.sub_jid = p.get_attribute('jid')
+                            sub.node_name = p.get_attribute_value('node')
+                            sub.sub_jid = p.get_attribute_value('jid')
             elif i.xml_ns == XMPP_CLIENT_NS and i.xml_name == 'error':
                 sub.error = Error.from_element(i)
 
@@ -199,8 +199,8 @@ class Node(Entity):
                 for p in i.xml_children:
                     if p.xml_ns in [XMPP_PUBSUB_NS]:
                         if p.xml_name == 'subscribe':
-                            sub.node_name = p.get_attribute('node')
-                            sub.sub_jid = p.get_attribute('jid')
+                            sub.node_name = p.get_attribute_value('node')
+                            sub.sub_jid = p.get_attribute_value('jid')
             elif i.xml_ns == XMPP_CLIENT_NS and i.xml_name == 'error':
                 sub.error = Error.from_element(i)
 
@@ -232,13 +232,13 @@ class Node(Entity):
                 for p in i.xml_children:
                     if p.xml_ns in [XMPP_PUBSUB_NS]:
                         if p.xml_name == 'publish':
-                            node.node_name = p.get_attribute('node')
+                            node.node_name = p.get_attribute_value('node')
                             for q in p.xml_children:
                                 if q.xml_name == 'item':
                                     payload = None
                                     if q.xml_children:
                                         payload = q.xml_children[0].clone()
-                                    node.item = Item(q.get_attribute('id'), payload)                                    
+                                    node.item = Item(q.get_attribute_value('id'), payload)                                    
             elif i.xml_ns == XMPP_CLIENT_NS and i.xml_name == 'error':
                 node.error = Error.from_element(i)
 
@@ -267,10 +267,10 @@ class Node(Entity):
                 for p in i.xml_children:
                     if p.xml_ns in [XMPP_PUBSUB_NS]:
                         if p.xml_name == 'retract':
-                            node.node_name = p.get_attribute('node')
+                            node.node_name = p.get_attribute_value('node')
                             for q in p.xml_children:
                                 if q.xml_name == 'item':
-                                    node.item = Item(q.get_attribute('id'))                                    
+                                    node.item = Item(q.get_attribute_value('id'))                                    
             elif i.xml_ns == XMPP_CLIENT_NS and i.xml_name == 'error':
                 node.error = Error.from_element(i)
 
