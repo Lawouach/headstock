@@ -161,15 +161,19 @@ class ItemsDiscovery(Entity):
         return disco
 
 class SubscriptionsDiscovery(Entity):
-    def __init__(self, from_jid, to_jid, type=u'get', stanza_id=None):
+    def __init__(self, from_jid, to_jid, node_name=None, type=u'get', stanza_id=None):
         Entity.__init__(self, from_jid, to_jid, type, stanza_id)
         self.subscriptions  = []
+        self.node_name = node_name
     
     @staticmethod
     def to_element(e):
         iq = Entity.to_element(e)
         query = E(u'query', namespace=XMPP_PUBSUB_NS, parent=iq)
-        E('subscriptions', namespace=XMPP_PUBSUB_NS, parent=query)
+        attr = None
+        if e.node_name:
+            attr = {u'node': e.node_name}
+        E('subscriptions', namespace=XMPP_PUBSUB_NS, attributes=attr, parent=query)
 
         return iq
 
@@ -179,6 +183,7 @@ class SubscriptionsDiscovery(Entity):
                                        JID.parse(e.get_attribute_value('to')),
                                        type=e.get_attribute_value('type'),
                                        stanza_id=e.get_attribute_value('id'))
+
         for c in e.xml_children:
             if not isinstance(c, E):
                 continue
