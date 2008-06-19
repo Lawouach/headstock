@@ -5,7 +5,7 @@ import socket
 from optparse import OptionParser
 
 from Axon.Scheduler import scheduler 
-from AxonExceptions import MultipleServiceDeletion
+from Axon.AxonExceptions import MultipleServiceDeletion
 
 from cherrypy.process import bus
 from cherrypy.process import plugins, servers
