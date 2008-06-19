@@ -47,6 +47,7 @@ class Server(object):
         d = SelectorDispatcher()
         d.add('/service[/]', GET=self.atompubapp.service_get, 
               HEAD=self.atompubapp.service_head)
+        d.add('/help[/]', GET=self.webapp.help)
 
         # OpenID controllers
         d.add('/auth/login', GET=self.oidapp.login)

@@ -312,7 +312,6 @@ class ItemsHandler(component):
             E(u'category', namespace=entry.xml_ns, prefix=entry.xml_prefix,
               attributes={u'term': unicode(tag)}, parent=entry)
         
-        print entry.xml()
         return uuid, entry
         
     def main(self):
@@ -358,7 +357,7 @@ class ItemsHandler(component):
             if self.dataReady("topurge"):
                 node_id = self.recv("topurge")
                 p = Node(unicode(self.from_jid), u'pubsub.%s' % self.xmpphost,
-                         node_name=self.pubsub_top_level_node)
+                         node_name=node_id)
                 self.send(p, "purge")
 
                 params = {'url': '%s/feed' % (self.collection.get_base_edit_uri().rstrip('/')), 

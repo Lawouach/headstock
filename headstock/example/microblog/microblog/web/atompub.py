@@ -207,7 +207,8 @@ class CollectionPagingHandler(object):
     def __init__(self, collection):
         self.collection = collection
 
-    def GET(self, start=0):
+    def GET(self, start):
+        if not start: start = 0
         start = int(start)
         
         members = self.collection.reload_members(start=start, limit=10)

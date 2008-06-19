@@ -152,3 +152,12 @@ div.bubble cite {
 
 #footerrights {
 }
+
+a {
+  color: #BBBBB5;
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}

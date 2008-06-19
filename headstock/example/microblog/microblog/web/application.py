@@ -29,6 +29,10 @@ class WebApplication(object):
         tpl = self.tpl_lookup.get_template('index.mako')
         return tpl.render(profile=profile)
 
+    def help(self):
+        tpl = self.tpl_lookup.get_template('help.mako')
+        return tpl.render()
+    
     def signin(self):
         tpl = self.tpl_lookup.get_template('signin.mako')
         return tpl.render()
@@ -90,7 +94,7 @@ class WebApplication(object):
         route = '/%s' % profile_name.encode('utf-8')
 
         controller = CollectionPagingHandler(c)
-        d.add('%s/paging' % route, GET=controller.GET)
+        d.add('%s/paging[/{start:digits}]' % route, GET=controller.GET)
 
         controller = CollectionTagingHandler(c)
         d.add('%s/tag/{tag}' % route, GET=controller.index)

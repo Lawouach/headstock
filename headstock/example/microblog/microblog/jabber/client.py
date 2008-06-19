@@ -188,31 +188,15 @@ class DummyMessageHandler(component):
                 elif isinstance(m, Message):
                     for body in m.bodies:
                         message = remove_BOM(body.plain_body).strip()
-                        if message == 'help':
-                            m = Message(self.from_jid, m.from_jid)
-                            b = """<ul>
-                                        <li>PI text</li>
-                                        <li>PI text</li>
-                                        <li>DI text</li>
-                                        <li>CN text</li>
-                                        <li>DN text</li>
-                                        <li>PN text</li>
-                                        <li>SN text</li>
-                                        <li>UN text</li>
-                                   </ul>"""
-                            b = E.load(b).xml_root
-                            m.bodies.append(XHTMLBody(b))
-                            self.send(m, 'outbox')
-                        else:
-                            print "Received message: %s" % repr(message)
-                            try:
-                                action, data = message.split(' ', 1)
-                            except ValueError:
-                                action = 'PI'
-                                data = message
-                                
-                            if action in self.outboxes:
-                                self.send(data, action) 
+                        print "Received message: %s" % repr(message)
+                        try:
+                            action, data = message.split(' ', 1)
+                        except ValueError:
+                            action = 'PI'
+                            data = message
+                            
+                        if action in self.outboxes:
+                            self.send(data, action) 
 
             if not self.anyReady():
                 self.pause()
