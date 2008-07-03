@@ -94,7 +94,7 @@ class Message(Entity):
             elif child.xml_ns == XMPP_CLIENT_NS:
                 if child.xml_name == 'body':
                     lang = child.get_attribute_value('lang')
-                    data = child.xml_text or ''
+                    data = child.collapse(separator='')
                     b = Body(unescape(data), lang=lang)
                     message.bodies.append(b)
                 elif child.xml_name == 'subject':
