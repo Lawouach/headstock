@@ -43,7 +43,7 @@ class Subject(object):
 
 class Thread(object):
     def __init__(self, text):
-        self.text
+        self.text = text
     
     def __repr__(self):
         return '<Thread at %s>' % (hex(id(self)),)
