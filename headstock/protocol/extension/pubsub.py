@@ -12,7 +12,7 @@ __all__ = ['SubscriptionDispatcher', 'NodeCreationDispatcher',
            'NodeDeletionDispatcher', 'UnsubscriptionDispatcher', 
            'ItemPublicationDispatcher', 'ItemDeletionDispatcher',
            'MessageEventDispatcher', 'NodePurgeDispatcher',
-           'PubSubDispatcher']
+           'PubSubDispatcher', 'ItemRetrievalDispatcher']
 
 class SubscriptionDispatcher(component):
     
@@ -304,6 +304,64 @@ class NodePurgeDispatcher(component):
 
         yield 1
 
+class ItemRetrievalDispatcher(component):
+    
+    Inboxes = {"inbox"              : "bridge.Element instance",
+               "control"            : "Shutdown the client stream",
+               "forward"            : "",
+               }
+    
+    Outboxes = {"outbox"       : "bridge.Element instance",
+                "signal"       : "Shutdown signal",
+                "log"          : "log",
+                "unknown"      : "Unknown element that could not be dispatched properly",
+                "xmpp.get"     : "Activity requests",
+                "xmpp.set"     : "Activity responses",
+                "xmpp.result"  : "Activity responses",
+                "xmpp.error"   : "Activity response error",
+                }
+    
+    def __init__(self):
+       super(ItemRetrievalDispatcher, self).__init__() 
+
+    def main(self):
+        yield 1
+
+        while 1:
+            if self.dataReady("control"):
+                mes = self.recv("control")
+                
+                if isinstance(mes, shutdownMicroprocess) or isinstance(mes, producerFinished):
+                    self.send(producerFinished(), "signal")
+                    break
+
+            if self.dataReady("forward"):
+                s = self.recv("forward")
+                self.send(Node.to_request_item(s), "outbox")
+
+            if self.dataReady("inbox"):
+                handled = False
+                a = self.recv("inbox")
+                e = a.xml_parent.xml_parent
+                self.send(('INCOMING', e), "log")
+                
+                msg_type = e.get_attribute_value(u'type') or 'get'
+                key = 'xmpp.%s' % unicode(msg_type)
+
+                if key in self.outboxes:
+                    self.send(Node.from_request_item(e), key)
+                    handled = True
+
+                if not handled:
+                    self.send(e, "unknown")
+                    
+            if not self.anyReady():
+                self.pause()
+  
+            yield 1
+
+        yield 1
+
 class ItemPublicationDispatcher(component):
     
     Inboxes = {"inbox"              : "bridge.Element instance",
@@ -463,6 +521,8 @@ class MessageEventDispatcher(component):
 class PubSubDispatcher(component):
     Inboxes = {"inbox"               : "bridge.Element instance",
                "control"             : "Shutdown the client stream",
+               "retrieve.inbox"        : "",
+               "retrieve.forward"      : "",
                "create.inbox"        : "",
                "create.forward"      : "",
                "purge.inbox"        : "",
@@ -478,6 +538,10 @@ class PubSubDispatcher(component):
                "retract.inbox"       : "",
                "retract.forward"     : "",
                "message.inbox"       : "",
+               "in.retrieve.error"        : "Retrieve items response error",
+               "in.retrieve.get"          : "Retrieve items requests",
+               "in.retrieve.set"          : "Retrieve items responses",
+               "in.retrieve.result"       : "Retrieve items responses",
                "in.create.error"        : "Publish items response error",
                "in.create.get"          : "Publish items requests",
                "in.create.set"          : "Publish items responses",
@@ -511,6 +575,7 @@ class PubSubDispatcher(component):
                 "signal"                  : "Shutdown signal",
                 "unknown"                 : "Unknown element that could not be dispatched properly",
                 "log"                     : "log",
+                "retrieve.outbox"           : "",
                 "create.outbox"           : "",
                 "purge.outbox"            : "",
                 "delete.outbox"           : "",
@@ -519,6 +584,10 @@ class PubSubDispatcher(component):
                 "publish.outbox"          : "",
                 "retract.outbox"          : "",
                 "message.outbox"          : "",
+                "out.retrieve.error"       : "Retrieve items responses",
+                "out.retrieve.get"          : "Retrieve items requests",
+                "out.retrieve.set"          : "Retrieve items responses",
+                "out.retrieve.result"       : "Retrieve items responses",
                 "out.create.get"          : "Publish items requests",
                 "out.create.set"          : "Publish items responses",
                 "out.create.result"       : "Publish items responses",
@@ -637,6 +706,23 @@ class PubSubDispatcher(component):
         self.link((nodedeletedisp, 'log'), (self, 'log'), passthrough=2)
         self.addChildren(nodedeletedisp)
         nodedeletedisp.activate()
+
+        itemretrievedisp = ItemRetrievalDispatcher()
+        self.link((self, 'retrieve.inbox'), (itemretrievedisp, 'inbox'), passthrough=1)
+        self.link((self, 'retrieve.forward'), (itemretrievedisp, 'forward'), passthrough=1)
+        self.link((self, 'in.retrieve.get'), (itemretrievedisp, 'forward'), passthrough=1)
+        self.link((self, 'in.retrieve.set'), (itemretrievedisp, 'forward'), passthrough=1)
+        self.link((self, 'in.retrieve.result'), (itemretrievedisp, 'forward'), passthrough=1)
+        self.link((self, 'in.retrieve.error'), (itemretrievedisp, 'forward'), passthrough=1)
+        self.link((itemretrievedisp, 'outbox'), (self, 'retrieve.outbox'), passthrough=2)
+        self.link((itemretrievedisp, 'xmpp.get'), (self, 'out.retrieve.get'), passthrough=2)
+        self.link((itemretrievedisp, 'xmpp.set'), (self, 'out.retrieve.set'), passthrough=2)
+        self.link((itemretrievedisp, 'xmpp.result'), (self, 'out.retrieve.result'), passthrough=2)
+        self.link((itemretrievedisp, 'xmpp.error'), (self, 'out.retrieve.error'), passthrough=2)
+        self.link((itemretrievedisp, 'unknown'), (self, 'unknown'), passthrough=2)
+        self.link((itemretrievedisp, 'log'), (self, 'log'), passthrough=2)
+        self.addChildren(itemretrievedisp)
+        itemretrievedisp.activate()
 
         itempublishdisp = ItemPublicationDispatcher()
         self.link((self, 'publish.inbox'), (itempublishdisp, 'inbox'), passthrough=1)
