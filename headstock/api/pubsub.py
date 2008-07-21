@@ -276,6 +276,41 @@ class Node(Entity):
 
         return node
         
+    @staticmethod
+    def to_request_item(e):
+        iq = Entity.to_element(e)
+        pubsub = E(u'pubsub', namespace=XMPP_PUBSUB_NS, parent=iq)
+        attrs = {u'node': e.node_name}
+        items = E(u'items', attributes=attrs, namespace=XMPP_PUBSUB_NS, parent=pubsub)
+        attrs = {u'id': e.item.id}
+        item = E(u'item', attributes=attrs, namespace=XMPP_PUBSUB_NS, parent=items)
+
+        return iq
+
+    @staticmethod
+    def from_request_item(e):
+        node = Node(JID.parse(e.get_attribute_value('from')),
+                    JID.parse(e.get_attribute_value('to')),
+                    type=e.get_attribute_value('type'),
+                    stanza_id=e.get_attribute_value('id'))
+
+        for i in e.xml_children:
+            if i.xml_ns in [XMPP_PUBSUB_NS]:
+                for p in i.xml_children:
+                    if p.xml_ns in [XMPP_PUBSUB_NS]:
+                        if p.xml_name == 'items':
+                            node.node_name = p.get_attribute_value('node')
+                            for q in p.xml_children:
+                                if q.xml_name == 'item':
+                                    payload = None
+                                    if q.xml_children: payload = q.xml_children
+                                    node.item = Item(q.get_attribute_value('id'),
+                                                     payload=payload)                                    
+            elif i.xml_ns == XMPP_CLIENT_NS and i.xml_name == 'error':
+                node.error = Error.from_element(i)
+
+        return node
+        
     
 class Message(Entity):
     def __init__(self, from_jid, to_jid):

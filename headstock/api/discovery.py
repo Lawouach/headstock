@@ -153,7 +153,7 @@ class ItemsDiscovery(Entity):
                             jid = JID.parse(unicode(i.get_attribute_value('jid')))
                             item = Item(jid, i.get_attribute_value('action'),
                                         i.get_attribute_value('name'),
-                                        i.get_attribute_value('node'))
+                                        disco.node_name)
                             disco.items.append(item)
             elif c.xml_ns == XMPP_CLIENT_NS and c.xml_name == 'error':
                 disco.error = Error.from_element(c)
@@ -192,7 +192,7 @@ class SubscriptionsDiscovery(Entity):
                 for p in c.xml_children:                    
                     if not isinstance(p, E):
                         continue
-                    if p.xml_ns == XMPP_PUBSUB_NS and p.xml_name == 'subscriptions':   
+                    if p.xml_ns == XMPP_PUBSUB_NS and p.xml_name == 'subscriptions':
                         for s in p.xml_children:                    
                             if not isinstance(s, E):
                                 continue
