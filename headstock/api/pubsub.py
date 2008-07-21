@@ -215,9 +215,12 @@ class Node(Entity):
         attrs = {u'id': e.item.id}
         item = E(u'item', attributes=attrs, namespace=XMPP_PUBSUB_NS, parent=publish)
 
-        if e.item.payload:
+        if e.item.payload and isinstance(e.item.payload, E):
             e.item.payload.xml_parent = item
             item.xml_children.append(e.item.payload)
+        elif e.item.payload and isinstance(e.item.payload, unicode):
+            item.xml_text = e.item.payload
+            
         return iq
         
     @staticmethod
