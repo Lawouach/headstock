@@ -102,7 +102,8 @@ class Roster(Entity):
                 item.name = child.get_attribute_value('name')
                 groups = child.get_children('group', ns=child.xml_ns) or []
                 for group in groups:
-                    item.groups.append(unicode(group))
+                    if group.xml_text:
+                        item.groups.append(group.xml_text)
                 item.subscription = child.get_attribute_value('subscription')
                 r.items[nodeid] = item
                 
