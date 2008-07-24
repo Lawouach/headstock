@@ -273,7 +273,8 @@ class NodePurgeDispatcher(component):
             if self.dataReady("control"):
                 mes = self.recv("control")
                 
-                if isinstance(mes, shutdownMicroprocess) or isinstance(mes, producerFinished):
+                if isinstance(mes, shutdownMicroprocess) or \
+                        isinstance(mes, producerFinished):
                     self.send(producerFinished(), "signal")
                     break
 
@@ -286,7 +287,7 @@ class NodePurgeDispatcher(component):
                 a = self.recv("inbox")
                 e = a.xml_parent.xml_parent
                 self.send(('INCOMING', e), "log")
-                
+
                 msg_type = e.get_attribute_value(u'type') or 'get'
                 key = 'xmpp.%s' % unicode(msg_type)
 
@@ -488,6 +489,7 @@ class MessageEventDispatcher(component):
                 "log"          : "log",
                 "unknown"      : "Unknown element that could not be dispatched properly",
                 "xmpp.message" : "Activity requests",
+                "xmpp.message.purge" : "Activity requests",
                 }
     
     def __init__(self):
@@ -509,8 +511,16 @@ class MessageEventDispatcher(component):
                 a = self.recv("inbox")
                 e = a.xml_parent
                 self.send(('INCOMING', e), "log")
-                self.send(Message.from_element(e), "xmpp.message")
-                    
+
+                m = Message.from_element(e)
+
+                if m.event == 'items':
+                    self.send(m, "xmpp.message")
+                elif m.event == 'purge':
+                    self.send(m, "xmpp.message.purge")
+                else:
+                    self.send(e, "unknown")
+
             if not self.anyReady():
                 self.pause()
   
@@ -616,7 +626,8 @@ class PubSubDispatcher(component):
                 "out.retract.set"         : "Retract item responses",
                 "out.retract.result"      : "Retract item responses",
                 "out.retract.error"       : "Retract item response error",
-                "out.message"             : "Retract item requests",}
+                "out.message"             : "Retract item requests",
+                "out.message.purge"       : "Retract item requests",}
     
     def __init__(self):
        super(PubSubDispatcher, self).__init__() 
@@ -761,6 +772,8 @@ class PubSubDispatcher(component):
         msgdisp = MessageEventDispatcher()
         self.link((self, 'message.inbox'), (msgdisp, 'inbox'), passthrough=1)
         self.link((msgdisp, 'xmpp.message'), (self, 'out.message'), passthrough=2)
+        self.link((msgdisp, 'xmpp.message.purge'), (self, 'out.message.purge'), passthrough=2)
+        self.link((msgdisp, 'unknown'), (self, 'unknown'), passthrough=2)
         self.link((msgdisp, 'log'), (self, 'log'), passthrough=2)
         self.addChildren(msgdisp)
         msgdisp.activate()

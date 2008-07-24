@@ -51,9 +51,40 @@ class Item(object):
         self.payload = payload
         self.event = eventType
 
+    @property
+    def name(self):
+        return self.id
+
     def __repr__(self):
         return '<Item "%s" at %s>' % (self.id or '', hex(id(self)),)
     
+class Message(Entity):
+    def __init__(self, from_jid, to_jid):
+        Entity.__init__(self, from_jid, to_jid) 
+        self.node_name = None
+        self.items = []
+        self.event = None
+
+    @staticmethod
+    def from_element(e):
+        msg = Message(JID.parse(e.get_attribute_value('from')),
+                      JID.parse(e.get_attribute_value('to')))
+
+        for c in e.xml_children:
+            if c.xml_ns == XMPP_PUBSUB_EVENT_NS: # x or event
+                for i in c.xml_children:
+                    if i.xml_ns == XMPP_PUBSUB_EVENT_NS: # items
+                        msg.node_name = i.get_attribute_value('node')
+                        msg.event = i.xml_name
+                        if msg.event == 'items':
+                            for t in i.xml_children: # item
+                                payload = None
+                                if t.xml_children:
+                                    payload = t.xml_children
+                                msg.items.append(Item(id=t.get_attribute_value('id'),
+                                                      payload=payload, eventType=t.xml_name))
+
+        return msg
 
 class Node(Entity):
     def __init__(self, from_jid, to_jid, node_name=None, type=u'set', stanza_id=None, **kwargs):
@@ -141,11 +172,11 @@ class Node(Entity):
                     stanza_id=e.get_attribute_value('id'))
 
         for i in e.xml_children:
-            if i.xml_ns in [XMPP_PUBSUB_NS]:
+            if i.xml_ns in [XMPP_PUBSUB_OWNER_NS]:
                 for p in i.xml_children:
-                    if p.xml_ns in [XMPP_PUBSUB_NS]:
-                        if p.xml_name == 'create':
-                            node.node_name = p.get_attribute_value('node')
+                    if p.xml_ns in [XMPP_PUBSUB_OWNER_NS]:
+                        if p.xml_name == 'purge':
+                            node.node_name = p.get_attribute_value('node')                                 
             elif i.xml_ns == XMPP_CLIENT_NS and i.xml_name == 'error':
                 node.error = Error.from_element(i)
 
@@ -315,27 +346,3 @@ class Node(Entity):
         return node
         
     
-class Message(Entity):
-    def __init__(self, from_jid, to_jid):
-        Entity.__init__(self, from_jid, to_jid) 
-        self.node_name = None
-        self.items = []
-
-    @staticmethod
-    def from_element(e):
-        msg = Message(JID.parse(e.get_attribute_value('from')),
-                      JID.parse(e.get_attribute_value('to')))
-
-        for c in e.xml_children:
-            if c.xml_ns == XMPP_PUBSUB_EVENT_NS: # x or event
-                for i in c.xml_children:
-                    if i.xml_ns == XMPP_PUBSUB_EVENT_NS: # items
-                        msg.node_name = i.get_attribute_value('node')
-                        for t in i.xml_children: # item
-                            payload = None
-                            if t.xml_children:
-                                payload = t.xml_children[0]
-                            msg.items.append(Item(id=t.get_attribute_value('id'),
-                                                  payload=payload, eventType=t.xml_name))
-
-        return msg
