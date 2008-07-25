@@ -39,7 +39,8 @@ class Item(object):
         self.node = node
         
     def __repr__(self):
-        return '<Item %s at %s>' % (str(self.jid), hex(id(self)))
+        return '<Item %s %s at %s>' % (self.node or '', str(self.name),
+                                       hex(id(self)))
 
 class Subscription(object):
     def __init__(self, node, jid, state):
