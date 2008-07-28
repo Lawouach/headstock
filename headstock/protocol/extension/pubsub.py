@@ -787,7 +787,8 @@ class PubSubDispatcher(component):
             if self.dataReady("control"):
                 mes = self.recv("control")
                 
-                if isinstance(mes, shutdownMicroprocess) or isinstance(mes, producerFinished):
+                if isinstance(mes, shutdownMicroprocess) or \
+                        isinstance(mes, producerFinished):
                     self.send(producerFinished(), "signal")
                     break
 

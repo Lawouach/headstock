@@ -8,6 +8,7 @@ from bridge.common import XMPP_DISCO_INFO_NS, XMPP_DISCO_ITEMS_NS
 
 from Axon.Component import component
 from Axon.Ipc import shutdownMicroprocess, producerFinished
+from Kamaelia.Util.Fanout import Fanout
 
 
 __all__ = ['FeaturesDiscoveryDispatcher', 'ItemsDiscoveryDispatcher',
@@ -50,18 +51,20 @@ class FeaturesDiscoveryDispatcher(component):
             if self.dataReady("inbox"):
                 handled = False
                 a = self.recv("inbox")
-                e = a.xml_parent 
-                self.send(('INCOMING', e), "log")
-                
-                msg_type = e.get_attribute_value(u'type') or u'get'
-                key = 'xmpp.%s' % unicode(msg_type)
+                if a.get_attribute_value(u'node') == None:
+                    e = a.xml_parent 
+                    self.send(('INCOMING', e), "log")
 
-                if key in self.outboxes:
-                    self.send(FeaturesDiscovery.from_element(e), key)
-                    handled = True
+                    msg_type = e.get_attribute_value(u'type') or u'get'
+                    key = 'xmpp.%s' % unicode(msg_type)
 
-                if not handled:
-                    self.send(e, "unknown")
+
+                    if key in self.outboxes:
+                        self.send(FeaturesDiscovery.from_element(e), key)
+                        handled = True
+
+                    if not handled:
+                        self.send(e, "unknown")
 
             if not self.anyReady():
                 self.pause()
@@ -268,18 +271,18 @@ class InformationDiscoveryDispatcher(component):
             if self.dataReady("inbox"):
                 handled = False
                 s = self.recv("inbox")
-                e = s.xml_parent.xml_parent
-                self.send(('INCOMING', e), "log")
-                
-                msg_type = e.get_attribute_value(u'type') or u'get'
-                key = 'xmpp.%s' % unicode(msg_type)
+                if s.get_attribute_value(u'node') != None:
+                    e = s.xml_parent
+                    self.send(('INCOMING', e), "log")
 
-                if key in self.outboxes:
-                    self.send(InformationDiscovery.from_element(e), key)
-                    handled = True
+                    msg_type = e.get_attribute_value(u'type') or u'get'
+                    key = 'xmpp.%s' % unicode(msg_type)
+                    if key in self.outboxes:
+                        self.send(InformationDiscovery.from_element(e), key)
+                        handled = True
 
-                if not handled:
-                    self.send(e, "unknown")
+                    if not handled:
+                        self.send(e, "unknown")
 
             if not self.anyReady():
                 self.pause()
@@ -360,7 +363,12 @@ class DiscoveryDispatcher(component):
     def __init__(self):
         super(DiscoveryDispatcher, self).__init__() 
 
-    def initComponents(self):        
+    def initComponents(self): 
+        fanout = Fanout(["features", "info"])
+        self.link((self, 'inbox'), (fanout, 'inbox'), passthrough=1)
+        self.addChildren(fanout)
+        fanout.activate()
+        
         subdisp = SubscriptionsDiscoveryDispatcher()
         self.link((self, 'subscription.inbox'), (subdisp, 'inbox'), passthrough=1)
         self.link((self, 'subscription.forward'), (subdisp, 'forward'), passthrough=1)
@@ -396,6 +404,7 @@ class DiscoveryDispatcher(component):
         affdisp.activate()
     
         featdisp = FeaturesDiscoveryDispatcher()
+        self.link((fanout, 'features'), (featdisp, 'inbox'))
         self.link((self, 'features.inbox'), (featdisp, 'inbox'), passthrough=1)
         self.link((self, 'features.forward'), (featdisp, 'forward'), passthrough=1)
         self.link((self, 'in.features.get'), (featdisp, 'forward'), passthrough=1)
@@ -430,6 +439,7 @@ class DiscoveryDispatcher(component):
         itemsdisp.activate()
 
         infodisp = InformationDiscoveryDispatcher()
+        self.link((fanout, 'info'), (infodisp, 'inbox'))
         self.link((self, 'info.inbox'), (infodisp, 'inbox'), passthrough=1)
         self.link((self, 'info.forward'), (infodisp, 'forward'), passthrough=1)
         self.link((self, 'in.info.get'), (infodisp, 'forward'), passthrough=1)
@@ -455,7 +465,8 @@ class DiscoveryDispatcher(component):
             if self.dataReady("control"):
                 mes = self.recv("control")
                 
-                if isinstance(mes, shutdownMicroprocess) or isinstance(mes, producerFinished):
+                if isinstance(mes, shutdownMicroprocess) or \
+                        isinstance(mes, producerFinished):
                     self.send(producerFinished(), "signal")
                     break
 
