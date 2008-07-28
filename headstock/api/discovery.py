@@ -12,7 +12,7 @@ from bridge.common import XMPP_DISCO_INFO_NS, XMPP_DISCO_ITEMS_NS, \
      XMPP_OOB_NS, XMPP_SI_NS, XMPP_SI_FILE_TRANSFER_NS, XMPP_BYTESTREAMS_NS,\
      XMPP_DATA_FORM_NS, XMPP_CLIENT_NS, XMPP_STREAM_NS, XMPP_PUBSUB_NS
 
-__all__ = ['FeaturesDiscovery', 'ItemsDiscovery',
+__all__ = ['FeaturesDiscovery', 'ItemsDiscovery', 'InformationDiscovery',
            'SubscriptionsDiscovery', 'AffiliationsDiscovery']
 
 class Identity(object):
@@ -244,5 +244,28 @@ class AffiliationsDiscovery(Entity):
                             disco.affiliations.append(aff)
             elif c.xml_ns == XMPP_CLIENT_NS and c.xml_name == 'error':
                 disco.error = Error.from_element(c)
+
+        return disco
+
+class InformationDiscovery(Entity):
+    def __init__(self, from_jid, to_jid, node_name=None, type=u'get', stanza_id=None):
+        Entity.__init__(self, from_jid, to_jid, type, stanza_id)
+        self.node_name = node_name
+    
+    @staticmethod
+    def to_element(e):
+        iq = Entity.to_element(e)
+        attrs = {u'node': e.node_name}
+        E(u'query', namespace=XMPP_DISCO_INFO_NS, parent=iq,
+          attributes=attrs)
+
+        return iq
+
+    @staticmethod
+    def from_element(e):
+        disco = InformationDiscovery(JID.parse(e.get_attribute_value('from')),
+                                   JID.parse(e.get_attribute_value('to')),
+                                   type=e.get_attribute_value('type'),
+                                   stanza_id=e.get_attribute_value('id'))
 
         return disco
