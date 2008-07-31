@@ -24,7 +24,7 @@ class MessageDispatcher(component):
                 }
     
     def __init__(self):
-       super(MessageDispatcher, self).__init__() 
+       super(MessageDispatcher, self).__init__()
 
     def main(self):
         while 1:

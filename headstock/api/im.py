@@ -4,6 +4,7 @@
 __all__ = ['Body', 'Event', 'Message', 'Subject', 'Thread']
 
 from xml.sax.saxutils import unescape
+    
 from datetime import datetime
 
 from headstock.api import Entity, Foreign

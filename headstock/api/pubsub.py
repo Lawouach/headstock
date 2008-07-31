@@ -316,8 +316,9 @@ class Node(Entity):
         pubsub = E(u'pubsub', namespace=XMPP_PUBSUB_NS, parent=iq)
         attrs = {u'node': e.node_name}
         items = E(u'items', attributes=attrs, namespace=XMPP_PUBSUB_NS, parent=pubsub)
-        attrs = {u'id': e.item.id}
-        item = E(u'item', attributes=attrs, namespace=XMPP_PUBSUB_NS, parent=items)
+        if e.item:
+            attrs = {u'id': e.item.id}
+            E(u'item', attributes=attrs, namespace=XMPP_PUBSUB_NS, parent=items)
 
         return iq
 
@@ -344,5 +345,7 @@ class Node(Entity):
                 node.error = Error.from_element(i)
 
         return node
-        
     
+    from_request_all_items = from_request_item
+    to_request_all_items = to_request_item
+

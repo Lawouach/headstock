@@ -63,7 +63,7 @@ class Affiliation(object):
 class FeaturesDiscovery(Entity):
     def __init__(self, from_jid, to_jid, node_name=None, type=u'get', stanza_id=None):
         Entity.__init__(self, from_jid, to_jid, type, stanza_id)
-        self.data_form = None
+        self.x = None
         self.node_name = node_name
         self.identities = []
         self.features = []
@@ -116,7 +116,7 @@ class FeaturesDiscovery(Entity):
                                         i.get_attribute_value('node'))
                             disco.items.append(item)
                     elif i.xml_ns == XMPP_DATA_FORM_NS:
-                        disco.data_form = Data.from_element(i)
+                        disco.x = Data.from_element(i)
             elif c.xml_ns == XMPP_CLIENT_NS and c.xml_name == 'error':
                 disco.error = Error.from_element(c)
 
@@ -252,9 +252,9 @@ class AffiliationsDiscovery(Entity):
 class InformationDiscovery(Entity):
     def __init__(self, from_jid, to_jid, node_name=None, type=u'get', stanza_id=None):
         Entity.__init__(self, from_jid, to_jid, type, stanza_id)
-        self.data_form = None
+        self.x = None
         self.node_name = node_name
-        self.identities = []
+        self.identity = None
         self.features = []
         self.items = []
     
@@ -286,7 +286,7 @@ class InformationDiscovery(Entity):
                             ident = Identity(i.get_attribute_value('name'),
                                              i.get_attribute_value('category'),
                                              i.get_attribute_value('type'))
-                            disco.identities.append(ident)
+                            disco.identity = ident
                         elif i.xml_name == 'feature':
                             feat = Feature(i.get_attribute_value('var'))
                             disco.features.append(feat)
@@ -297,7 +297,7 @@ class InformationDiscovery(Entity):
                                         i.get_attribute_value('node'))
                             disco.items.append(item)
                     elif i.xml_ns == XMPP_DATA_FORM_NS:
-                        disco.data_form = Data.from_element(i)
+                        disco.x = Data.from_element(i)
             elif c.xml_ns == XMPP_CLIENT_NS and c.xml_name == 'error':
                 disco.error = Error.from_element(c)
         return disco
