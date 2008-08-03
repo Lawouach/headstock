@@ -320,6 +320,10 @@ class ItemRetrievalDispatcher(component):
                 "xmpp.set"     : "Activity responses",
                 "xmpp.result"  : "Activity responses",
                 "xmpp.error"   : "Activity response error",
+                "xmpp.all.get"     : "Activity requests",
+                "xmpp.all.set"     : "Activity responses",
+                "xmpp.all.result"  : "Activity responses",
+                "xmpp.all.error"   : "Activity response error",
                 }
     
     def __init__(self):
@@ -533,6 +537,8 @@ class PubSubDispatcher(component):
                "control"             : "Shutdown the client stream",
                "retrieve.inbox"        : "",
                "retrieve.forward"      : "",
+               "retrieve.all.inbox"      : "",
+               "retrieve.all.forward"      : "",
                "create.inbox"        : "",
                "create.forward"      : "",
                "purge.inbox"        : "",
@@ -552,6 +558,10 @@ class PubSubDispatcher(component):
                "in.retrieve.get"          : "Retrieve items requests",
                "in.retrieve.set"          : "Retrieve items responses",
                "in.retrieve.result"       : "Retrieve items responses",
+               "in.retrieve.all.error"        : "Retrieve items response error",
+               "in.retrieve.all.get"          : "Retrieve items requests",
+               "in.retrieve.all.set"          : "Retrieve items responses",
+               "in.retrieve.all.result"       : "Retrieve items responses",
                "in.create.error"        : "Publish items response error",
                "in.create.get"          : "Publish items requests",
                "in.create.set"          : "Publish items responses",
@@ -586,6 +596,7 @@ class PubSubDispatcher(component):
                 "unknown"                 : "Unknown element that could not be dispatched properly",
                 "log"                     : "log",
                 "retrieve.outbox"           : "",
+                "retrieve.all.outbox"           : "",
                 "create.outbox"           : "",
                 "purge.outbox"            : "",
                 "delete.outbox"           : "",
@@ -598,6 +609,10 @@ class PubSubDispatcher(component):
                 "out.retrieve.get"          : "Retrieve items requests",
                 "out.retrieve.set"          : "Retrieve items responses",
                 "out.retrieve.result"       : "Retrieve items responses",
+                "out.retrieve.all.error"       : "Retrieve items responses",
+                "out.retrieve.all.get"          : "Retrieve items requests",
+                "out.retrieve.all.set"          : "Retrieve items responses",
+                "out.retrieve.all.result"       : "Retrieve items responses",
                 "out.create.get"          : "Publish items requests",
                 "out.create.set"          : "Publish items responses",
                 "out.create.result"       : "Publish items responses",
@@ -727,15 +742,19 @@ class PubSubDispatcher(component):
         self.link((self, 'in.retrieve.error'), (itemretrievedisp, 'forward'), passthrough=1)
         self.link((self, 'retrieve.all.inbox'), (itemretrievedisp, 'inbox'), passthrough=1)
         self.link((self, 'retrieve.all.forward'), (itemretrievedisp, 'forward'), passthrough=1)
-        self.link((self, 'in.retrieve.get'), (itemretrievedisp, 'forward'), passthrough=1)
-        self.link((self, 'in.retrieve.set'), (itemretrievedisp, 'forward'), passthrough=1)
-        self.link((self, 'in.retrieve.result'), (itemretrievedisp, 'forward'), passthrough=1)
-        self.link((self, 'in.retrieve.error'), (itemretrievedisp, 'forward'), passthrough=1)
+        self.link((self, 'in.retrieve.all.get'), (itemretrievedisp, 'forward'), passthrough=1)
+        self.link((self, 'in.retrieve.all.set'), (itemretrievedisp, 'forward'), passthrough=1)
+        self.link((self, 'in.retrieve.all.result'), (itemretrievedisp, 'forward'), passthrough=1)
+        self.link((self, 'in.retrieve.all.error'), (itemretrievedisp, 'forward'), passthrough=1)
         self.link((itemretrievedisp, 'outbox'), (self, 'retrieve.outbox'), passthrough=2)
         self.link((itemretrievedisp, 'xmpp.get'), (self, 'out.retrieve.get'), passthrough=2)
         self.link((itemretrievedisp, 'xmpp.set'), (self, 'out.retrieve.set'), passthrough=2)
         self.link((itemretrievedisp, 'xmpp.result'), (self, 'out.retrieve.result'), passthrough=2)
         self.link((itemretrievedisp, 'xmpp.error'), (self, 'out.retrieve.error'), passthrough=2)
+        self.link((itemretrievedisp, 'xmpp.all.get'), (self, 'out.retrieve.all.get'), passthrough=2)
+        self.link((itemretrievedisp, 'xmpp.all.set'), (self, 'out.retrieve.all.set'), passthrough=2)
+        self.link((itemretrievedisp, 'xmpp.all.result'), (self, 'out.retrieve.all.result'), passthrough=2)
+        self.link((itemretrievedisp, 'xmpp.all.error'), (self, 'out.retrieve.all.error'), passthrough=2)
         self.link((itemretrievedisp, 'unknown'), (self, 'unknown'), passthrough=2)
         self.link((itemretrievedisp, 'log'), (self, 'log'), passthrough=2)
         self.addChildren(itemretrievedisp)
