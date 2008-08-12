@@ -23,7 +23,8 @@ class PresenceDispatcher(component):
                 "signal"            : "Shutdown signal",
                 "log"               : "log",
                 "unknown"           : "Unknown element that could not be dispatched properly",
-                "xmpp.unavailable"  : "Notifiy an entity of one's availability",
+                "xmpp.available"    : "Notifiy an entity of one's availability. Not defined by RFC 3920 but make the implementation clearer, matched missing type attribute.",
+                "xmpp.unavailable"  : "Notifiy an entity of one's unavailability",
                 "xmpp.error"        : "An error has occurred regarding processing or delivery of a presence stanza",
                 "xmpp.probe"        : "Server to server message to check the presence of an entity",
                 "xmpp.subscribe"    : "Sender wishes to subscribe to the recipient's presence",
@@ -53,13 +54,13 @@ class PresenceDispatcher(component):
             if self.dataReady("inbox"):
                 e = self.recv("inbox")
                 self.send(('INCOMING', e), "log")
-                presence_type = e.get_attribute(u'type')
+                presence_type = e.get_attribute_value(u'type') or 'available'
                 handled = False
-                if presence_type:
-                    key = 'xmpp.%s' % presence_type
-                    if key in self.outboxes:
-                        self.send(Presence.from_element(e), key)
-                        handled = True
+
+                key = 'xmpp.%s' % presence_type
+                if key in self.outboxes:
+                    self.send(Presence.from_element(e), key)
+                    handled = True
 
                 if not handled:
                     self.send(e, "unknown")
