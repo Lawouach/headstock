@@ -39,6 +39,12 @@ class Subject(object):
         self.content = content
         self.lang = lang
 
+    def __str__(self):
+        return str(self.content or '')
+
+    def __unicode__(self):
+        return self.context or u''
+
     def __repr__(self):
         return '<Subject at %s>' % (hex(id(self)),)
 
@@ -48,6 +54,12 @@ class Thread(object):
     
     def __repr__(self):
         return '<Thread at %s>' % (hex(id(self)),)
+
+    def __str__(self):
+        return str(self.text or '')
+
+    def __unicode__(self):
+        return self.text or u''
 
 class Event(object):
     offline = u"offline"
@@ -153,7 +165,7 @@ class Message(Entity):
                 b.xml_children.append(body.inner)
 
         if m.thread:
-            E(u'thread', content=m.thread,
+            E(u'thread', content=unicode(m.thread),
               namespace=XMPP_CLIENT_NS, parent=e)
 
         x = E(u'x', namespace=XMPP_EVENT_NS, parent=e)
