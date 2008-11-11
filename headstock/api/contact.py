@@ -31,6 +31,9 @@ class Presence(Entity):
                      e.get_attribute_value('type', None))
 
         for child in e.xml_children:
+            if isinstance(child, unicode):
+                continue
+
             if child.xml_ns == XMPP_CLIENT_NS:
                 if child.xml_name == 'show':
                     p.show = child.xml_text
