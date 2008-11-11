@@ -30,7 +30,8 @@ class FeedReaderComponent(component):
 
             if self.dataReady("inbox"):
                 url = self.recv("inbox")
-                if self.use_etags and self.last and self.last.etag:
+                if self.use_etags and self.last and \
+                        hasattr(self.last, 'etag') and self.last.etag:
                     d = feedparser.parse(url, etag=self.last.etag)
                 else:
                     d = feedparser.parse(url)

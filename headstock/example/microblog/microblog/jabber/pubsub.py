@@ -149,10 +149,10 @@ class DiscoHandler(component):
                 items = self.recv('items.result')
                 print "%s has %d item(s)" % (items.node_name, len(items.items))
 
-                for item in items.items:
-                    n = ItemsDiscovery(unicode(self.from_jid), u'pubsub.%s' % self.xmpphost, 
-                                       node_name=item.node)
-                    self.send(n, "items-disco")
+                #for item in items.items:
+                    #n = ItemsDiscovery(unicode(self.from_jid), u'pubsub.%s' % self.xmpphost, 
+                    #                   node_name=item.node)
+                    #self.send(n, "items-disco")
 
             if self.dataReady('items.error'):
                 items_disco = self.recv('items.error')
@@ -460,7 +460,10 @@ class MessageHandler(component):
                             print "Published item: %s" % item.id
                             member = collection.get_member(item.id)
                             if not member:
-                                body = item.payload.xml()
+                                if isinstance(item.payload, list):
+                                    body = item.payload[0].xml()
+                                else:
+                                    body = item.payload.xml()
                                 params = {'url': collection.get_base_edit_uri(), 
                                           'method': 'POST', 'postbody': body,
                                           'extraheaders': {'content-type': 'application/atom+xml;type=entry',
