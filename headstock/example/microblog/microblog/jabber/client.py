@@ -76,6 +76,7 @@ class RosterHandler(component):
                 "signal"      : "Shutdown signal",
                 "message"     : "Message to send",
                 "result"      : "", 
+                'roster-updated': "",
                 "activity"    : "headstock.api.activity.Activity instance to send to the server"}
 
     def __init__(self, from_jid, session_id):
@@ -120,6 +121,8 @@ class RosterHandler(component):
                 self.roster = roster
                 for nodeid in roster.items:
                     contact = roster.items[nodeid]
+
+                self.send(roster, 'roster-updated')
                     
             if self.dataReady('ask-activity'):
                 self.recv('ask-activity')
@@ -138,6 +141,7 @@ class DummyMessageHandler(component):
     Inboxes = {"inbox"    : "headstock.api.contact.Message instance received from a peer"\
                    "or the string input in the console",
                "jid"      : "headstock.api.jid.JID instance received from the server",
+               "roster-received": "",
                "control"  : "stops the component"}
     
     Outboxes = {"outbox"  : "headstock.api.im.Message to send to the client",
@@ -157,6 +161,8 @@ class DummyMessageHandler(component):
         self.from_jid = None
         self.session_id = session_id
         self.profile = profile
+
+        self.roster = None
 
     def initComponents(self):
         sub = SubscribeTo("JID.%s" % self.session_id)
@@ -179,6 +185,9 @@ class DummyMessageHandler(component):
             if self.dataReady("jid"):
                 self.from_jid = self.recv('jid')
             
+            if self.dataReady("roster-received"):
+                self.roster = self.recv("roster-received")
+                
             if self.dataReady("inbox"):
                 m = self.recv("inbox")
                 if isinstance(m, str) and m != '':
@@ -196,7 +205,15 @@ class DummyMessageHandler(component):
                             data = message
                             
                         if action in self.outboxes:
-                            self.send(data, action) 
+                            self.send(data, action)
+
+                        if self.roster:
+                            for nodeid in self.roster.items:
+                                m = Message(unicode(self.from_jid), unicode(nodeid),
+                                            type=u'chat', stanza_id=generate_unique())
+                                m.event = Event.composing 
+                                m.bodies.append(Body(unicode(data)))
+                                self.send(m, "outbox")
 
             if not self.anyReady():
                 self.pause()
@@ -591,7 +608,7 @@ class Client(component):
 
         self.graph = Graphline(client = self,
                                logger = Logger(path='./logs/%s.log' % self.username, 
-                                               stdout=False, name=self.session_id),
+                                               stdout=True, name=self.session_id),
                                tcp = TCPClient(self.server, self.port),
                                xmlparser = XMLIncrParser(),
                                xmpp = self.client,
@@ -665,6 +682,7 @@ class Client(component):
                                            ('rosterdisp', 'xmpp.set'): ('rosterhandler', 'pushed'),
                                            ('rosterdisp', 'xmpp.result'): ('rosterhandler', 'inbox'),
                                            ('rosterhandler', 'result'): ('rosterdisp', 'forward'),
+                                           ('rosterhandler', 'roster-updated'): ('msgdummyhandler', 'roster-received'),
                                            ("rosterdisp", "outbox"): ("xmpp", "forward"),
 
                                            # Discovery
