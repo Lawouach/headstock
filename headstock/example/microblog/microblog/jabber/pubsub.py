@@ -28,7 +28,10 @@ __all__ = ['DiscoHandler', 'ItemsHandler', 'MessageHandler']
 
 publish_item_rx = re.compile(r'\[(.*)\] ([\w ]*)')
 retract_item_rx = re.compile(r'\[(.*)\] ([\w:\-]*)')
+geo_rx = re.compile(r'(.*) ([\[\.|\d,|\-\]]*)')
 
+GEORSS_NS = u"http://www.georss.org/georss"
+GEORSS_PREFIX = u"georss"
 
 class DiscoHandler(component):
     Inboxes = {"inbox"       : "",
@@ -313,6 +316,10 @@ class ItemsHandler(component):
               attributes={u'term': unicode(tag)}, parent=entry)
         
         return uuid, entry
+
+    def add_geo_point(self, entry, long, lat):
+        E(u'point', prefix=GEORSS_PREFIX, namespace=GEORSS_NS, 
+          content=u'%s %s' % (unicode(long), unicode(lat)), parent=entry)
         
     def main(self):
         yield self.initComponents()
@@ -331,11 +338,20 @@ class ItemsHandler(component):
             
             if self.dataReady("topublish"):
                 message = self.recv("topublish")
-                m = publish_item_rx.match(message)
                 node = self.pubsub_top_level_node
-                if m:
-                    node, message = m.groups()
+
+                m = geo_rx.match(message)
+                long = lat = None
+                if not m:
+                    m = publish_item_rx.match(message)
+                    if m:
+                        node, message = m.groups()
+                else:
+                    message, long_lat = m.groups()
+                    long, lat = long_lat.strip('[').rstrip(']').split(',')
                 uuid, entry = self.make_entry(message, node)
+                if long and lat:
+                    self.add_geo_point(entry, long, lat)
                 i = Item(id=uuid, payload=entry)
                 p = Node(unicode(self.from_jid), u'pubsub.%s' % self.xmpphost,
                          node_name=unicode(node), item=i)

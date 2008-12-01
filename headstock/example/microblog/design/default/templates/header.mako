@@ -14,4 +14,5 @@
     <link rel="alternate" type="application/atom+xml" href="${collection.get_base_edit_uri()}/feed" />
     %endif
     </script>
+
   </head>
