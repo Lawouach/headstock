@@ -19,9 +19,9 @@
 	      on ${format_date(str(member.atom.entry.published))}</cite>
 	  </div>
 	  %if hasattr(member.atom.entry, 'point'):
-    	      <%long,lat = str(member.atom.entry.point).split(' ')%>
+    	      <%lat,long = str(member.atom.entry.point).split(' ')%>
 	      <div id="map" style="width: 500px; height: 300px"></div>
-	      <script type="text/javascript">load_map(${long}, ${lat});</script>
+	      <script type="text/javascript">load_map(${lat}, ${long});</script>
 	  %endif
 	%endif
 	</div>
