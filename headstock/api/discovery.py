@@ -43,10 +43,11 @@ class Item(object):
                                        hex(id(self)))
 
 class Subscription(object):
-    def __init__(self, node, jid, state):
+    def __init__(self, node, jid, state, subid=None):
         self.node = node
         self.jid = jid
         self.state = state
+        self.subid = subid
 
     def __repr__(self):
         return '<Subscription %s [%s:%s] at %s>' % (str(self.jid), self.node, 
@@ -172,7 +173,7 @@ class SubscriptionsDiscovery(Entity):
     @staticmethod
     def to_element(e):
         iq = Entity.to_element(e)
-        query = E(u'query', namespace=XMPP_PUBSUB_NS, parent=iq)
+        query = E(u'pubsub', namespace=XMPP_PUBSUB_NS, parent=iq)
         attr = None
         if e.node_name:
             attr = {u'node': e.node_name}
@@ -186,12 +187,12 @@ class SubscriptionsDiscovery(Entity):
                                        JID.parse(e.get_attribute_value('to')),
                                        type=e.get_attribute_value('type'),
                                        stanza_id=e.get_attribute_value('id'))
-
+        
         for c in e.xml_children:
             if not isinstance(c, E):
                 continue
 
-            if c.xml_ns == XMPP_PUBSUB_NS and c.xml_name == 'pubsub':
+            if c.xml_ns == XMPP_PUBSUB_NS and c.xml_name in ['pubsub', 'query']:
                 for p in c.xml_children:                    
                     if not isinstance(p, E):
                         continue
@@ -203,7 +204,8 @@ class SubscriptionsDiscovery(Entity):
                             if jid:
                                 JID.parse(jid)
                             sub = Subscription(s.get_attribute_value('node'), jid,
-                                               s.get_attribute_value('subscription'))
+                                               s.get_attribute_value('subscription'),
+                                               s.get_attribute_value('subid'))
                             disco.subscriptions.append(sub)
             elif c.xml_ns == XMPP_CLIENT_NS and c.xml_name == 'error':
                 disco.error = Error.from_element(c)
@@ -218,7 +220,7 @@ class AffiliationsDiscovery(Entity):
     @staticmethod
     def to_element(e):
         iq = Entity.to_element(e)
-        query = E(u'query', namespace=XMPP_PUBSUB_NS, parent=iq)
+        query = E(u'pubsub', namespace=XMPP_PUBSUB_NS, parent=iq)
         E('affiliations', namespace=XMPP_PUBSUB_NS, parent=query)
 
         return iq

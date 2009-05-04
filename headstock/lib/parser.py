@@ -37,8 +37,10 @@ class XMLIncrParser(component):
         while 1:
             if self.dataReady("control"):
                 mes = self.recv("control")
-                
-                if isinstance(mes, shutdownMicroprocess) or isinstance(mes, producerFinished):
+
+                if isinstance(mes, shutdownMicroprocess) or \
+                        isinstance(mes, producerFinished):
+                    p.reset()
                     self.send(producerFinished(), "signal")
                     break
 

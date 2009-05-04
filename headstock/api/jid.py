@@ -1,7 +1,13 @@
 # -*- coding: utf-8 -*-
 
 import re
-
+try:
+    import hashlib
+    HASH = lambda x: hashlib.sha1(x).hexdigest()
+except ImportError:
+    import sha
+    HASH = lambda x: sha.new(x).hexdigest()
+    
 # taken from http://code.sixapart.com/cgi-bin/viewcvs.cgi/trunk/DJabberd/lib/DJabberd/JID.pm?rev=684&view=markup
 _r_jid = re.compile(u'(?:([\x29\x23-\x25\x28-\x2E\x30-\x39\x3B\x3D\x3F\x41-\x7E]{1,1023})\@)?([a-zA-Z0-9\.\-]{1,1023})(?:/(.{1,1023}))?', re.UNICODE)
 
@@ -50,3 +56,6 @@ class JID(object):
             return "%s@%s/%s" % (self.node, self.domain, self.resource)
         return self.domain
       
+    @property
+    def hashed(self):
+        return HASH(str(self))

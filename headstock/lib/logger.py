@@ -27,11 +27,15 @@ class Logger(component):
         
         logfmt = logging.Formatter("[%(asctime)s] %(message)s")
 
+        file_handler = None
+        stdout_handler = None
+
         if self.path:
             h = handlers.RotatingFileHandler(self.path, maxBytes=1048576, backupCount=5)
             h.setLevel(logging.DEBUG)
             h.setFormatter(logfmt)
             logger.addHandler(h)
+            file_handler = h
 
         if self.with_stdout:
             import sys
@@ -39,6 +43,7 @@ class Logger(component):
             h.setLevel(logging.DEBUG)
             h.setFormatter(logfmt)
             logger.addHandler(h)
+            stdout_handler = h
 
         yield 1
 
@@ -46,8 +51,17 @@ class Logger(component):
             if self.dataReady("control"):
                 mes = self.recv("control")
                 
-                if isinstance(mes, shutdownMicroprocess) or isinstance(mes, producerFinished):
-                    logger.close()
+                if isinstance(mes, shutdownMicroprocess) or \
+                        isinstance(mes, producerFinished):
+
+                    if file_handler:
+                        file_handler.close()
+                        logger.removeHandler(file_handler)
+                        
+                    if stdout_handler:
+                        stdout_handler.close()
+                        logger.removeHandler(stdout_handler) 
+                   
                     self.send(producerFinished(), "signal")
                     break
 

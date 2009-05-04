@@ -12,7 +12,7 @@ from bridge import Element as E
 from bridge import Attribute as A
 from bridge.common import XMPP_CLIENT_NS, XMPP_STREAM_NS, \
     XMPP_PUBSUB_NS, XMPP_PUBSUB_OWNER_NS, XMPP_PUBSUB_NODE_CONFIG_NS,\
-    XMPP_PUBSUB_EVENT_NS
+    XMPP_PUBSUB_EVENT_NS, XMPP_SHIM_NS
 
 class Configure(object):
     def __init__(self, x=None):
@@ -91,6 +91,7 @@ class Node(Entity):
         Entity.__init__(self, from_jid, to_jid, type, stanza_id) 
         self.node_name = node_name
         self.configure = None
+        self.subid = None
         if kwargs:
             self.__dict__.update(kwargs)
 
@@ -319,7 +320,13 @@ class Node(Entity):
         if e.item:
             attrs = {u'id': e.item.id}
             E(u'item', attributes=attrs, namespace=XMPP_PUBSUB_NS, parent=items)
-
+            
+        if e.subid:
+            headers = E(u'headers', namespace=XMPP_SHIM_NS, parent=iq)
+            E(u'header', namespace=XMPP_SHIM_NS, parent=headers,
+              attributes={u'name': u'pubsub#subid'}, content=e.subid)
+        
+        print iq.xml()
         return iq
 
     @staticmethod
