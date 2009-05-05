@@ -69,6 +69,7 @@ class Presence(Entity):
 
         for f in p.foreign:
             e.xml_children.append(f.e)
+            f.e.xml_parent = e
             
         return e
 
