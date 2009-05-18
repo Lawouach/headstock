@@ -35,7 +35,7 @@ class CotComponent(component):
         self.from_jid = None
         self.cots = CotManager()
 
-        self.stanzas = self.cots.next_stanza()
+        self.stanzas = self.cots.run()
 
     def initComponents(self):
         return 1
@@ -45,8 +45,7 @@ class CotComponent(component):
             stanza = self.stanzas.next()
             self.send(stanza, 'outbox')
         except StopIteration:
-            self.cots.report()
-            self.send(producerFinished(), "signal")
+            pass
 
     def main(self):
         yield self.initComponents()
@@ -72,8 +71,14 @@ class CotComponent(component):
                 self.send(('INCOMING', e.xml_parent), 'log')
                 self.cots.ack_stanza(e.xml_parent)
                 self.send_stanza()
+
+            if self.cots.completed:
+                self.send(producerFinished(), "signal")
+                break
                 
             if not self.anyReady():
                 self.pause()
   
             yield 1
+
+        self.cots.report()
