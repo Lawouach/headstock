@@ -8,8 +8,11 @@
 # http://trac.defuze.org/browser/oss/httpauthfilter
 
 import base64
-import md5
-import sha
+try:
+    from hashlib import md5
+except ImportError:
+    from md5 import new as md5
+
 import random
 
 from headstock.error import HeadstockAuthenticationFailure
@@ -18,8 +21,8 @@ __all__ = ['compute_rspauth', 'generate_challenge', \
            'challenge_to_dict', 'compute_digest_response', \
            'validate_response']
 
-H = lambda val: md5.new(val).digest()
-HH = lambda val: md5.new(val).hexdigest()
+H = lambda val: md5(val).digest()
+HH = lambda val: md5(val).hexdigest()
 
 def generate_challenge():
     return base64.b64encode('nonce="%d",qop="auth",charset=utf-8,algorithm=md5-sess' % int(random.random() * 26804224)).decode('utf-8')

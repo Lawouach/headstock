@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 import codecs
-import sha
+try:
+    from hashlib import sha
+except ImportError:
+    from sha import new as sha
 from time import time
 from random import random
 
@@ -10,7 +13,7 @@ __all__ = ['generate_unique', 'remove_BOM']
 def generate_unique(seed=None):
     if not seed:
         seed = str(time() * random())
-    return unicode(abs(hash(sha.new(seed).hexdigest())))
+    return unicode(abs(hash(sha(seed).hexdigest())))
 
 def remove_BOM(text):
     if codecs.BOM_UTF8.decode("utf-8") in text:
