@@ -357,6 +357,7 @@ class ClientStream(component):
                         self._handle_session(e)
                     elif (e.xml_ns == XMPP_BIND_NS) and (e.xml_name == 'jid'):
                         self._handle_jid(e)
+                        yield 1
                         self.send('', 'bound')
                     elif (e.xml_ns == XMPP_SASL_NS) and (e.xml_name == 'failure'):
                         self.send(e, "error")

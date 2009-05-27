@@ -101,4 +101,3 @@ class PresenceComponent(component):
                 self.pause()
   
             yield 1
-    

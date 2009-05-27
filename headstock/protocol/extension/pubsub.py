@@ -8,7 +8,7 @@ from bridge.common import XMPP_PUBSUB_NS, XMPP_DISCO_INFO_NS, \
      XMPP_DISCO_ITEMS_NS, XMPP_PUBSUB_OWNER_NS, XMPP_PUBSUB_EVENT_NS
 from headstock.api.pubsub import Node, Message
 
-__all__ = ['SubscriptionDispatcher', 'NodeCreationDispatcher',
+__all__ = ['SubscriptionDispatcher', 'NodeCreationDispatcher', 'NodeConfigureDispatcher',
            'NodeDeletionDispatcher', 'UnsubscriptionDispatcher', 
            'ItemPublicationDispatcher', 'ItemDeletionDispatcher',
            'MessageEventDispatcher', 'NodePurgeDispatcher',
@@ -176,6 +176,64 @@ class NodeCreationDispatcher(component):
 
                 if key in self.outboxes:
                     self.send(Node.from_creation_element(e), key)
+                    handled = True
+
+                if not handled:
+                    self.send(e, "unknown")
+                    
+            if not self.anyReady():
+                self.pause()
+  
+            yield 1
+
+        yield 1
+
+class NodeConfigureDispatcher(component):
+    
+    Inboxes = {"inbox"              : "bridge.Element instance",
+               "control"            : "Shutdown the client stream",
+               "forward"            : "",
+               }
+    
+    Outboxes = {"outbox"       : "bridge.Element instance",
+                "signal"       : "Shutdown signal",
+                "log"          : "log",
+                "unknown"      : "Unknown element that could not be dispatched properly",
+                "xmpp.get"     : "Activity requests",
+                "xmpp.set"     : "Activity responses",
+                "xmpp.result"  : "Activity responses",
+                "xmpp.error"   : "Activity response error",
+                }
+    
+    def __init__(self):
+       super(NodeConfigureDispatcher, self).__init__() 
+
+    def main(self):
+        yield 1
+
+        while 1:
+            if self.dataReady("control"):
+                mes = self.recv("control")
+                
+                if isinstance(mes, shutdownMicroprocess) or isinstance(mes, producerFinished):
+                    self.send(producerFinished(), "signal")
+                    break
+
+            if self.dataReady("forward"):
+                s = self.recv("forward")
+                self.send(Node.to_configure_element(s), "outbox")
+
+            if self.dataReady("inbox"):
+                handled = False
+                a = self.recv("inbox")
+                e = a.xml_parent.xml_parent
+                self.send(('INCOMING', e), "log")
+                
+                msg_type = e.get_attribute_value(u'type') or 'get'
+                key = 'xmpp.%s' % unicode(msg_type)
+
+                if key in self.outboxes:
+                    self.send(Node.from_configure_element(e), key)
                     handled = True
 
                 if not handled:
@@ -541,6 +599,8 @@ class PubSubDispatcher(component):
                "retrieve.all.forward"      : "",
                "create.inbox"        : "",
                "create.forward"      : "",
+               "configure.inbox"        : "",
+               "configure.forward"      : "",
                "purge.inbox"        : "",
                "purge.forward"      : "",
                "delete.inbox"        : "",
@@ -566,6 +626,10 @@ class PubSubDispatcher(component):
                "in.create.get"          : "Publish items requests",
                "in.create.set"          : "Publish items responses",
                "in.create.result"       : "Publish items responses",
+               "in.configure.error"        : "Publish items response error",
+               "in.configure.get"          : "Publish items requests",
+               "in.configure.set"          : "Publish items responses",
+               "in.configure.result"       : "Publish items responses",
                "in.purge.error"        : "Publish items response error",
                "in.purge.get"          : "Publish items requests",
                "in.purge.set"          : "Publish items responses",
@@ -598,6 +662,7 @@ class PubSubDispatcher(component):
                 "retrieve.outbox"           : "",
                 "retrieve.all.outbox"           : "",
                 "create.outbox"           : "",
+                "configure.outbox"           : "",
                 "purge.outbox"            : "",
                 "delete.outbox"           : "",
                 "subscribe.outbox"        : "",
@@ -616,6 +681,11 @@ class PubSubDispatcher(component):
                 "out.create.get"          : "Publish items requests",
                 "out.create.set"          : "Publish items responses",
                 "out.create.result"       : "Publish items responses",
+                "out.create.error"       : "Publish items responses",
+                "out.configure.get"          : "Publish items requests",
+                "out.configure.set"          : "Publish items responses",
+                "out.configure.result"       : "Publish items responses",
+                "out.configure.error"       : "Publish items responses",
                 "out.purge.error"        : "Publish items response error",
                 "out.purge.get"          : "Publish items requests",
                 "out.purge.set"          : "Publish items responses",
@@ -624,7 +694,6 @@ class PubSubDispatcher(component):
                 "out.delete.get"          : "Publish items requests",
                 "out.delete.set"          : "Publish items responses",
                 "out.delete.result"       : "Publish items responses",
-                "out.create.error"        : "Publish items response error",
                 "out.subscribe.get"       : "Publish items requests",
                 "out.subscribe.set"       : "Publish items responses",
                 "out.subscribe.result"    : "Publish items responses",
@@ -698,6 +767,23 @@ class PubSubDispatcher(component):
         self.link((nodecreatedisp, 'log'), (self, 'log'), passthrough=2)
         self.addChildren(nodecreatedisp)
         nodecreatedisp.activate()
+
+        nodeconfiguredisp = NodeConfigureDispatcher()
+        self.link((self, 'configure.inbox'), (nodeconfiguredisp, 'inbox'), passthrough=1)
+        self.link((self, 'configure.forward'), (nodeconfiguredisp, 'forward'), passthrough=1)
+        self.link((self, 'in.configure.get'), (nodeconfiguredisp, 'forward'), passthrough=1)
+        self.link((self, 'in.configure.set'), (nodeconfiguredisp, 'forward'), passthrough=1)
+        self.link((self, 'in.configure.result'), (nodeconfiguredisp, 'forward'), passthrough=1)
+        self.link((self, 'in.configure.error'), (nodeconfiguredisp, 'forward'), passthrough=1)
+        self.link((nodeconfiguredisp, 'outbox'), (self, 'configure.outbox'), passthrough=2)
+        self.link((nodeconfiguredisp, 'xmpp.get'), (self, 'out.configure.get'), passthrough=2)
+        self.link((nodeconfiguredisp, 'xmpp.set'), (self, 'out.configure.set'), passthrough=2)
+        self.link((nodeconfiguredisp, 'xmpp.result'), (self, 'out.configure.result'), passthrough=2)
+        self.link((nodeconfiguredisp, 'xmpp.error'), (self, 'out.configure.error'), passthrough=2)
+        self.link((nodeconfiguredisp, 'unknown'), (self, 'unknown'), passthrough=2)
+        self.link((nodeconfiguredisp, 'log'), (self, 'log'), passthrough=2)
+        self.addChildren(nodeconfiguredisp)
+        nodeconfiguredisp.activate()
 
         nodepurgedisp = NodePurgeDispatcher()
         self.link((self, 'purge.inbox'), (nodepurgedisp, 'inbox'), passthrough=1)

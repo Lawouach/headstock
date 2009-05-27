@@ -6,7 +6,7 @@ from headstock.protocol.extension.discovery import DiscoveryDispatcher, Features
 from headstock.protocol.extension.pubsub import *
 from headstock.api.jid import JID
 from headstock.api import Entity
-from headstock.api.pubsub import Node, Item, Message
+from headstock.api.pubsub import Node, Item, Message, Configure
 from headstock.api.discovery import *
 from headstock.lib.utils import generate_unique
 
@@ -17,20 +17,6 @@ from bridge.common import XMPP_CLIENT_NS, XMPP_ROSTER_NS,\
 
 __all__ = ['make_linkages', 'PubSubDiscoveryComponent', 'PubSubNodeComponent']
 
-def make_linkages(pubsub_service):
-    dcomp, dlinks = make_disco_linkages(pubsub_service)
-    ncomp, nlinks = make_node_linkages(pubsub_service)
-
-    comps = {}
-    comps.update(dcomp)
-    comps.update(ncomp)
-
-    linkages = {}
-    linkages.update(dlinks)
-    linkages.update(nlinks)
-
-    return comps, linkages
-    
 def make_disco_linkages(pubsub_service):
     linkages = {("xmpp", "%s.query" % XMPP_DISCO_INFO_NS): ("discodisp", "inbox"),
                 ("xmpp", "%s.query" % XMPP_DISCO_ITEMS_NS): ("discodisp", "items.inbox"),
@@ -205,56 +191,6 @@ class PubSubDiscoveryComponent(component):
   
             yield 1
 
-def make_node_linkages(pubsub_service):
-    linkages = {("xmpp", "%s.create" % XMPP_PUBSUB_NS): ("pubsubdisp", "create.inbox"),
-                ("xmpp", "%s.delete" % XMPP_PUBSUB_OWNER_NS): ("pubsubdisp", "delete.inbox"),
-                ("xmpp", "%s.purge" % XMPP_PUBSUB_NS): ("pubsubdisp", "purge.inbox"),
-                ("xmpp", "%s.subscribe" % XMPP_PUBSUB_NS): ("pubsubdisp", "subscribe.inbox"),
-                ("xmpp", "%s.unsubscribe" % XMPP_PUBSUB_NS):("pubsubdisp", "unsubscribe.inbox"),
-                ("xmpp", "%s.publish" % XMPP_PUBSUB_NS): ("pubsubdisp", "publish.inbox"),
-                ("xmpp", "%s.retract" % XMPP_PUBSUB_NS): ("pubsubdisp", "retract.inbox"),
-                ("xmpp", "%s.items" % XMPP_PUBSUB_NS): ("pubsubdisp", "retrieve.inbox"),
-                ("xmpp", "%s.x" % XMPP_PUBSUB_EVENT_NS): ("pubsubdisp", "message.inbox"),
-                ("xmpp", "%s.event" % XMPP_PUBSUB_EVENT_NS): ("pubsubdisp", "message.inbox"),
-                ("pubsubdisp", "log"): ('logger', "inbox"),
-                ("itemshandler", "create-node"): ("pubsubdisp", "create.forward"),
-                ("itemshandler", "delete-node"): ("pubsubdisp", "delete.forward"),
-                ("itemshandler", "retrieve-item"): ("pubsubdisp", "retrieve.forward"),
-                ("itemshandler", "retrieve-all-items"): ("pubsubdisp", "retrieve.all.forward"),
-                ("itemshandler", "subscribe-node"): ("pubsubdisp", "subscribe.forward"),
-                ("itemshandler", "unsubscribe-node"): ("pubsubdisp", "unsubscribe.forward"),
-                ('itemshandler', 'publish-item'): ('pubsubdisp', 'publish.forward'),
-                ('itemshandler', 'delete-item'): ('pubsubdisp', 'retract.forward'),
-                ('itemshandler', 'purge-collection-node'): ('pubsubdisp', 'purge.forward'),
-                ("pubsubdisp", "retrieve.outbox"): ("xmpp", "forward"),
-                ("pubsubdisp", "retrieve.all.outbox"): ("xmpp", "forward"),
-                ("pubsubdisp", "create.outbox"): ("xmpp", "forward"),
-                ("pubsubdisp", "delete.outbox"): ("xmpp", "forward"),
-                ("pubsubdisp", "purge.outbox"): ("xmpp", "forward"),
-                ("pubsubdisp", "subscribe.outbox"): ("xmpp", "forward"),
-                ("pubsubdisp", "unsubscribe.outbox"): ("xmpp", "forward"),
-                ("pubsubdisp", "publish.outbox"): ("xmpp", "forward"),
-                ("pubsubdisp", "retract.outbox"): ("xmpp", "forward"),
-                ("pubsubdisp", "out.message"): ('itemshandler', 'message.received'),
-                ("pubsubdisp", "out.message.purge"): ('itemshandler', 'purged'),
-                ("pubsubdisp", "out.retrieve.result"): ("itemshandler", "retrieved"),
-                ("pubsubdisp", "out.retrieve.all.result"): ("itemshandler", "retrieved"),
-                ("pubsubdisp", "out.create.result"): ("itemshandler", "created"),
-                ("pubsubdisp", "out.subscribe.result"): ("itemshandler", "subscribed"),
-                ("pubsubdisp", "out.delete.result"): ("itemshandler", "deleted"),
-                ("pubsubdisp", "out.retrieve.error"): ("itemshandler", "error"),
-                ("pubsubdisp", "out.retrieve.all.error"): ("itemshandler", "error"),
-                ("pubsubdisp", "out.create.error"): ("itemshandler", "error"),
-                ("pubsubdisp", "out.delete.error"): ("itemshandler", "error"),
-                ("pubsubdisp", "out.purge.error"): ("itemshandler", "error"),
-                ("pubsubdisp", "out.publish.error"): ("itemshandler", "publish.error"),
-                ("pubsubdisp", "out.retract.error"): ("itemshandler", "retract.error"),
-                ("pubsubdisp", "out.publish.result"): ("itemshandler", "published"),
-                ('jidsplit', 'pubsubnodejid'): ('itemshandler', 'jid'),
-                ('boundsplit', 'pubsubnodebound'): ('itemshandler', 'bound')}
-    return dict(itemshandler=PubSubNodeComponent(pubsub_service),
-                pubsubdisp=PubSubDispatcher()), linkages
-        
 class PubSubNodeComponent(component):
     Inboxes = {"inbox"       : "",
                "control"     : "", 
@@ -263,6 +199,7 @@ class PubSubNodeComponent(component):
                
                "request-create-node" : "",
                "request-create-collection-node": "",
+               "request-configure-node" : "",
                "request-delete-node" : "",
                "request-unsubscribe-node" : "",
                "request-subscribe-node" : "",
@@ -275,6 +212,7 @@ class PubSubNodeComponent(component):
                "subscribed": "",
                "retrieved": "",
                "created": "",
+               "configured": "",
                "deleted" : "",
                "purged" : "",
                "error"       : "",
@@ -288,6 +226,7 @@ class PubSubNodeComponent(component):
                 "signal"        : "Shutdown signal",
                 "create-node"   : "",
                 "delete-node"   : "",
+                "configure-node": "",
                 "publish-item"  : "",
                 "delete-item"  : "",
                 "retrieve-item": "",
@@ -298,6 +237,7 @@ class PubSubNodeComponent(component):
                 "node-error": "",
                 "retrieved-node": "",
                 "created-node": "",
+                "configured-node": "",
                 "subscribed-node": "",
                 "deleted-node": "",
                 "received-message": "",
@@ -306,6 +246,7 @@ class PubSubNodeComponent(component):
     def __init__(self, pubsub_service):
         super(PubSubNodeComponent, self).__init__()
         self.pubsub_service = pubsub_service
+        self.from_jid = None
 
     def initComponents(self):
         return 1
@@ -330,94 +271,232 @@ class PubSubNodeComponent(component):
 
             if self.dataReady('error'):
                 node = self.recv('error')
-                self.send(node, 'node-error')
+                self.error(node)
 
             if self.dataReady('request-create-node'):
-                nodeid = self.recv('request-create-node')
+                node_id = self.recv('request-create-node')
+                self.create_node(node_id)
 
-                p = Node(unicode(self.from_jid), self.pubsub_service, node_name=nodeid)
-                self.send(p, "create-node")
+            if self.dataReady('request-configure-node'):
+                node = self.recv('request-configure-node')
+                self.configure_node(node)
 
             if self.dataReady('request-item'):
                 node_id, item_id = self.recv('request-item')
-                p = Node(unicode(self.from_jid), self.pubsub_service, type=u"get",
-                         node_name=node_id, item=Item(id=item_id))
-                self.send(p, "retrieve-item")
+                self.fetch_item(node_id, item_id)
 
             if self.dataReady('request-all-items'):
                 node_id = self.recv('request-all-items')
-                p = Node(unicode(self.from_jid), self.pubsub_service, type=u"get",
-                         node_name=node_id)
-                self.send(p, "retrieve-all-items")
+                self.fetch_items(node_id)
 
             if self.dataReady('request-publish-item'):
                 node_id, item_id, data = self.recv('request-publish-item')
-                i = Item(id=item_id, payload=data)
-                p = Node(unicode(self.from_jid), self.pubsub_service, 
-                         node_name=node_id, item=i)
-                self.send(p, "publish-item")
+                self.publish_item(node_id, item_id, data)
 
             if self.dataReady('request-delete-item'):
                 node_id, item_id = self.recv('request-delete-item')
-                i = Item(id=item_id)
-                p = Node(unicode(self.from_jid), self.pubsub_service, 
-                         node_name=node_id, item=i)
-                self.send(p, "delete-item")
+                self.delete_item(node_id, item_id)
 
             if self.dataReady('request-create-collection-node'):
-                nodeid = self.recv('request-create-collection-node').strip()
-
-                p = Node(unicode(self.from_jid), self.pubsub_service, node_name=nodeid)
-                p.set_default_collection_conf()
-                self.send(p, "create-node")
+                node_id = self.recv('request-create-collection-node').strip()
+                self.create_collection_node(node_id)
 
             if self.dataReady('request-delete-node'):
-                nodeid = self.recv('request-delete-node')
-                p = Node(unicode(self.from_jid), self.pubsub_service, node_name=nodeid)
-                self.send(p, "delete-node")
+                node_id = self.recv('request-delete-node')
+                self.delete_node(node_id)
 
             if self.dataReady('request-purge-collection-node'):
-                nodeid = self.recv('request-purge-collection-node')
-                p = Node(unicode(self.from_jid), self.pubsub_service, node_name=nodeid)
-                self.send(p, "purge-collection-node")
+                node_id = self.recv('request-purge-collection-node')
+                self.purge_node(node_id)
 
             if self.dataReady('request-subscribe-node'):
-                nodeid = self.recv('request-subscribe-node')
-                p = Node(unicode(self.from_jid), self.pubsub_service,
-                         node_name=nodeid, sub_jid=self.from_jid.nodeid())
-                self.send(p, "subscribe-node")
+                node_id = self.recv('request-subscribe-node')
+                self.subscribe_to_node(node_id)
 
             if self.dataReady('request-unsubscribe-node'):
-                nodeid = self.recv('request-unsubscribe-node')
-                p = Node(unicode(self.from_jid), self.pubsub_service,
-                         node_name=nodeid, sub_jid=self.from_jid.nodeid())
-                self.send(p, "unsubscribe-node")
+                node_id = self.recv('request-unsubscribe-node')
+                self.unsubscribe_from_node(node_id)
             
             if self.dataReady('retrieved'):
                 node = self.recv('retrieved')
-                self.send(node, "retrieved-node")
+                self.node_fetched(node)
                 
             if self.dataReady('created'):
                 node = self.recv('created')
-                self.send(node, "created-node")
+                self.node_created(node)
+                
+            if self.dataReady('configured'):
+                node = self.recv('configured')
+                self.node_configured(node)
                 
             if self.dataReady('subscribed'):
                 node = self.recv('subscribed')
-                self.send(node, "subscribed-node")
+                self.node_subscribed(node)
 
             if self.dataReady('deleted'):
                 node = self.recv('deleted')
-                self.send(node, "deleted-node")
+                self.node_deleted(node)
                 
             if self.dataReady("message.received"):
                 message = self.recv("message.received")
-                self.send(node, "received-message")
+                self.message_received(message)
                 
             if self.dataReady('purged'):
-                message = self.recv('purged')
-                self.send(node, "purged-node")
+                node = self.recv('purged')
+                self.node_purged(node)
                 
             if not self.anyReady():
                 self.pause()
   
             yield 1
+
+    def create_node(self, node_id):
+        p = Node(unicode(self.from_jid), self.pubsub_service, node_name=node_id)
+        self.send(p, "create-node")
+
+    def create_collection_node(self, node_id, associate_id=None):
+        p = Node(unicode(self.from_jid), self.pubsub_service, node_name=node_id)
+        if not associate_id:
+            p.set_default_collection_conf()
+        else:
+            p.associate_with_node(associate_id)
+        self.send(p, "create-node")
+
+    def configure_node(self, node_id, dataform):
+        p = Node(unicode(self.from_jid), self.pubsub_service, node_name=node_id)
+        p.configure = Configure(dataform)
+        self.send(p, "configure-node")
+
+    def fetch_item(self, node_id, item_id):
+        p = Node(unicode(self.from_jid), self.pubsub_service, type=u"get",
+                 node_name=node_id, item=Item(id=item_id))
+        self.send(p, "retrieve-item")
+
+    def fetch_items(self, node_id):
+        p = Node(unicode(self.from_jid), self.pubsub_service, type=u"get",
+                 node_name=node_id)
+        self.send(p, "retrieve-all-items")
+
+    def publish_item(self, node_id, item_id, payload):
+        i = Item(id=item_id, payload=payload)
+        p = Node(unicode(self.from_jid), self.pubsub_service, 
+                 node_name=node_id, item=i)
+        self.send(p, "publish-item")
+
+    def delete_item(self, node_id, item_id):
+        i = Item(id=item_id)
+        p = Node(unicode(self.from_jid), self.pubsub_service, 
+                 node_name=node_id, item=i)
+        self.send(p, "delete-item")
+
+    def delete_node(self, node_id):
+        p = Node(unicode(self.from_jid), self.pubsub_service, node_name=node_id)
+        self.send(p, "delete-node")
+
+    def purge_node(self, node_id):
+        p = Node(unicode(self.from_jid), self.pubsub_service, node_name=node_id)
+        self.send(p, "purge-collection-node")
+
+    def subscribe_to_node(self, node_id):
+        p = Node(unicode(self.from_jid), self.pubsub_service,
+                 node_name=node_id, sub_jid=self.from_jid.nodeid())
+        self.send(p, "subscribe-node")
+
+    def unsubscribe_from_node(self, node_id):
+        p = Node(unicode(self.from_jid), self.pubsub_service,
+                 node_name=node_id, sub_jid=self.from_jid.nodeid())
+        self.send(p, "unsubscribe-node")
+
+    def node_fetched(self, node):
+        self.send(node, "retrieved-node")
+
+    def node_created(self, node):
+        self.send(node, "created-node")
+
+    def node_configured(self, node):
+        self.send(node, "configured-node")
+
+    def node_deleted(self, node):
+        self.send(node, "deleted-node")
+
+    def node_subscribed(self, node):
+        self.send(node, "subscribed-node")
+        
+    def node_purged(self, node):
+        self.send(node, "purged-node")
+
+    def message_received(self, message):
+        self.send(node, "received-message")
+
+    def error(self, node):
+        self.send(node, 'node-error')
+
+def make_node_linkages(pubsub_service, pubsub_handler_cls=PubSubNodeComponent):
+    linkages = {("xmpp", "%s.create" % XMPP_PUBSUB_NS): ("pubsubdisp", "create.inbox"),
+                ("xmpp", "%s.delete" % XMPP_PUBSUB_OWNER_NS): ("pubsubdisp", "delete.inbox"),
+                ("xmpp", "%s.purge" % XMPP_PUBSUB_NS): ("pubsubdisp", "purge.inbox"),
+                ("xmpp", "%s.subscribe" % XMPP_PUBSUB_NS): ("pubsubdisp", "subscribe.inbox"),
+                ("xmpp", "%s.unsubscribe" % XMPP_PUBSUB_NS):("pubsubdisp", "unsubscribe.inbox"),
+                ("xmpp", "%s.publish" % XMPP_PUBSUB_NS): ("pubsubdisp", "publish.inbox"),
+                ("xmpp", "%s.retract" % XMPP_PUBSUB_NS): ("pubsubdisp", "retract.inbox"),
+                ("xmpp", "%s.items" % XMPP_PUBSUB_NS): ("pubsubdisp", "retrieve.inbox"),
+                ("xmpp", "%s.x" % XMPP_PUBSUB_EVENT_NS): ("pubsubdisp", "message.inbox"),
+                ("xmpp", "%s.event" % XMPP_PUBSUB_EVENT_NS): ("pubsubdisp", "message.inbox"),
+                ("pubsubdisp", "log"): ('logger', "inbox"),
+                ("itemshandler", "create-node"): ("pubsubdisp", "create.forward"),
+                ("itemshandler", "configure-node"): ("pubsubdisp", "configure.forward"),
+                ("itemshandler", "delete-node"): ("pubsubdisp", "delete.forward"),
+                ("itemshandler", "retrieve-item"): ("pubsubdisp", "retrieve.forward"),
+                ("itemshandler", "retrieve-all-items"): ("pubsubdisp", "retrieve.all.forward"),
+                ("itemshandler", "subscribe-node"): ("pubsubdisp", "subscribe.forward"),
+                ("itemshandler", "unsubscribe-node"): ("pubsubdisp", "unsubscribe.forward"),
+                ('itemshandler', 'publish-item'): ('pubsubdisp', 'publish.forward'),
+                ('itemshandler', 'delete-item'): ('pubsubdisp', 'retract.forward'),
+                ('itemshandler', 'purge-collection-node'): ('pubsubdisp', 'purge.forward'),
+                ("pubsubdisp", "retrieve.outbox"): ("xmpp", "forward"),
+                ("pubsubdisp", "retrieve.all.outbox"): ("xmpp", "forward"),
+                ("pubsubdisp", "create.outbox"): ("xmpp", "forward"),
+                ("pubsubdisp", "configure.outbox"): ("xmpp", "forward"),
+                ("pubsubdisp", "delete.outbox"): ("xmpp", "forward"),
+                ("pubsubdisp", "purge.outbox"): ("xmpp", "forward"),
+                ("pubsubdisp", "subscribe.outbox"): ("xmpp", "forward"),
+                ("pubsubdisp", "unsubscribe.outbox"): ("xmpp", "forward"),
+                ("pubsubdisp", "publish.outbox"): ("xmpp", "forward"),
+                ("pubsubdisp", "retract.outbox"): ("xmpp", "forward"),
+                ("pubsubdisp", "out.message"): ('itemshandler', 'message.received'),
+                ("pubsubdisp", "out.message.purge"): ('itemshandler', 'purged'),
+                ("pubsubdisp", "out.retrieve.result"): ("itemshandler", "retrieved"),
+                ("pubsubdisp", "out.retrieve.all.result"): ("itemshandler", "retrieved"),
+                ("pubsubdisp", "out.create.result"): ("itemshandler", "created"),
+                ("pubsubdisp", "out.configure.result"): ("itemshandler", "configured"),
+                ("pubsubdisp", "out.subscribe.result"): ("itemshandler", "subscribed"),
+                ("pubsubdisp", "out.delete.result"): ("itemshandler", "deleted"),
+                ("pubsubdisp", "out.retrieve.error"): ("itemshandler", "error"),
+                ("pubsubdisp", "out.retrieve.all.error"): ("itemshandler", "error"),
+                ("pubsubdisp", "out.create.error"): ("itemshandler", "error"),
+                ("pubsubdisp", "out.configure.error"): ("itemshandler", "error"),
+                ("pubsubdisp", "out.delete.error"): ("itemshandler", "error"),
+                ("pubsubdisp", "out.purge.error"): ("itemshandler", "error"),
+                ("pubsubdisp", "out.publish.error"): ("itemshandler", "publish.error"),
+                ("pubsubdisp", "out.retract.error"): ("itemshandler", "retract.error"),
+                ("pubsubdisp", "out.publish.result"): ("itemshandler", "published"),
+                ('jidsplit', 'pubsubnodejid'): ('itemshandler', 'jid'),
+                ('boundsplit', 'pubsubnodebound'): ('itemshandler', 'bound')}
+    return dict(itemshandler=pubsub_handler_cls(pubsub_service),
+                pubsubdisp=PubSubDispatcher()), linkages
+        
+
+def make_linkages(pubsub_service, pubsub_handler_cls=PubSubNodeComponent):
+    dcomp, dlinks = make_disco_linkages(pubsub_service)
+    ncomp, nlinks = make_node_linkages(pubsub_service, pubsub_handler_cls)
+
+    comps = {}
+    comps.update(dcomp)
+    comps.update(ncomp)
+
+    linkages = {}
+    linkages.update(dlinks)
+    linkages.update(nlinks)
+
+    return comps, linkages
+    

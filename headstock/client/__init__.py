@@ -49,7 +49,8 @@ class Client(component):
     def __init__(self, username, password, domain, resource=u"headstock", 
                  hostname=u'localhost', port=5222, usetls=False, register=False,
                  unregister=False, password_lookup =None,
-                 log_file_path=None, log_to_console=False):
+                 log_file_path=None, log_to_console=False,
+                 when_active=None):
         super(Client, self).__init__() 
         self.jid = JID(username, domain, resource)
         self.username = username
@@ -66,6 +67,7 @@ class Client(component):
         if password_lookup:
             self.password_lookup = password_lookup
         self.graph = None
+        self.when_active = when_active
 
         ClientStream.Outboxes["%s.query" % XMPP_IBR_NS] = "Registration"
         ClientStream.Outboxes["%s.query" % XMPP_LAST_NS] = "Activity"
@@ -76,6 +78,7 @@ class Client(component):
         ClientStream.Outboxes["%s.subscriptions" % XMPP_PUBSUB_NS] = "Pubsub subscriptions handler"
         ClientStream.Outboxes["%s.affiliations" % XMPP_PUBSUB_NS] = "Pubsub affiliations handler"
         ClientStream.Outboxes["%s.create" % XMPP_PUBSUB_NS] = "Pubsub node creation handler"
+        ClientStream.Outboxes["%s.configure" % XMPP_PUBSUB_OWNER_NS] = "Pubsub node configuration handler"
         ClientStream.Outboxes["%s.purge" % XMPP_PUBSUB_NS] = "Pubsub node purge handler"
         ClientStream.Outboxes["%s.delete" % XMPP_PUBSUB_OWNER_NS] = "Pubsub node delete handler"
         ClientStream.Outboxes["%s.publish" % XMPP_PUBSUB_NS] = "Pubsub item publication handler"
@@ -148,6 +151,9 @@ class Client(component):
             self.base_graph.update(components)
             self.base_graph['linkages'].update(linkages)
 
+    def get_component(self, key):
+        return self.base_graph.get(key, None)
+
     def close(self):
         if self.unregister:
             self.send(None, 'askunregistration')
@@ -204,6 +210,8 @@ class Client(component):
                 
             if self.dataReady("bound"):
                 self.recv('bound')
+                if self.when_active:
+                    self.when_active(self.jid)
 
             if self.dataReady("error"):
                 e = self.recv('error')
@@ -256,29 +264,29 @@ if __name__ == '__main__':
         return options
 
     def add_extensions(client):
-        ## from headstock.client.registration import make_linkages
-##         components, linkages = make_linkages()
-##         client.registerComponents(components, linkages)
-        
-##         from headstock.client.presence import make_linkages
-##         components, linkages = make_linkages()
-##         client.registerComponents(components, linkages)
-
-##         from headstock.client.roster import make_linkages
-##         components, linkages = make_linkages()
-##         client.registerComponents(components, linkages)
-
-##         from headstock.client.im import make_linkages
-##         components, linkages = make_linkages()
-##         client.registerComponents(components, linkages)
-
-##         from headstock.client.pubsub import make_linkages
-##         components, linkages = make_linkages(u'pubsub.localhost')
-##         client.registerComponents(components, linkages)
-
-        from headstock.client.cot import make_linkages
-        components, linkages = make_linkages(load_cot_scripts())
+        from headstock.client.registration import make_linkages
+        components, linkages = make_linkages()
         client.registerComponents(components, linkages)
+        
+        from headstock.client.presence import make_linkages
+        components, linkages = make_linkages()
+        client.registerComponents(components, linkages)
+
+        from headstock.client.roster import make_linkages
+        components, linkages = make_linkages()
+        client.registerComponents(components, linkages)
+
+        from headstock.client.im import make_linkages
+        components, linkages = make_linkages()
+        client.registerComponents(components, linkages)
+         
+        from headstock.client.pubsub import make_linkages
+        components, linkages = make_linkages(u'pubsub.localhost')
+        client.registerComponents(components, linkages)
+
+        #from headstock.client.cot import make_linkages
+        #components, linkages = make_linkages(load_cot_scripts())
+        #client.registerComponents(components, linkages)
 
     def load_cot_scripts():
         from headstock.lib.cot import CotScript

@@ -12,7 +12,7 @@ from bridge import Element as E
 from bridge import Attribute as A
 from bridge.common import XMPP_CLIENT_NS, XMPP_STREAM_NS, \
     XMPP_PUBSUB_NS, XMPP_PUBSUB_OWNER_NS, XMPP_PUBSUB_NODE_CONFIG_NS,\
-    XMPP_PUBSUB_EVENT_NS, XMPP_SHIM_NS
+    XMPP_PUBSUB_EVENT_NS, XMPP_SHIM_NS, XMPP_DATA_FORM_NS
 
 class Configure(object):
     def __init__(self, x=None):
@@ -20,9 +20,16 @@ class Configure(object):
 
     @staticmethod
     def to_element(e, parent=None):
-        c = E(u'configure', namespace=XMPP_PUBSUB_NS, parent=parent)
+        ns = XMPP_PUBSUB_NS
+        if parent:
+            ns = parent.xml_ns
+        c = E(u'configure', namespace=ns, parent=parent)
         Data.to_element(e.x, parent=c)
         return c
+
+    @staticmethod
+    def from_element(e):
+        return Configure(Data.from_element(e))
 
     @staticmethod
     def make_collection_node():
@@ -31,6 +38,13 @@ class Configure(object):
                                values=[u'http://jabber.org/protocol/pubsub#node_config']))
         d.fields.append(Field(field_type=None, var=u'pubsub#node_type', 
                               values=[u'collection']))
+        return Configure(x=d)
+
+    @staticmethod
+    def associate_with_node(node_id):
+        d = Data(u'submit')
+        d.fields.append(Field(field_type=None, var=u'pubsub#collection', 
+                              values=[node_id]))
         return Configure(x=d)
 
     def create_leaf_node_whitelist(cls):
@@ -101,6 +115,9 @@ class Node(Entity):
     def set_default_collection_conf(self):
         self.configure = Configure.make_collection_node()
 
+    def associate_with_node(self, node_id):
+        self.configure = Configure.associate_with_node(node_id)
+
     @staticmethod
     def to_creation_element(e):
         iq = Entity.to_element(e)
@@ -123,9 +140,8 @@ class Node(Entity):
         for i in e.xml_children:
             if i.xml_ns in [XMPP_PUBSUB_NS]:
                 for p in i.xml_children:
-                    if p.xml_ns in [XMPP_PUBSUB_NS]:
-                        if p.xml_name == 'create':
-                            node.node_name = p.get_attribute_value('node')
+                    if p.xml_ns in [XMPP_PUBSUB_NS] and p.xml_name == 'create':
+                        node.node_name = p.get_attribute_value('node')
             elif i.xml_ns == XMPP_CLIENT_NS and i.xml_name == 'error':
                 node.error = Error.from_element(i)
 
@@ -147,11 +163,10 @@ class Node(Entity):
                     stanza_id=e.get_attribute_value('id'))
 
         for i in e.xml_children:
-            if i.xml_ns in [XMPP_PUBSUB_NS]:
+            if i.xml_ns in [XMPP_PUBSUB_OWNER_NS]:
                 for p in i.xml_children:
-                    if p.xml_ns in [XMPP_PUBSUB_NS]:
-                        if p.xml_name == 'create':
-                            node.node_name = p.get_attribute_value('node')
+                    if p.xml_ns in [XMPP_PUBSUB_OWNER_NS] and p.xml_name == 'delete':
+                        node.node_name = p.get_attribute_value('node')
             elif i.xml_ns == XMPP_CLIENT_NS and i.xml_name == 'error':
                 node.error = Error.from_element(i)
 
@@ -178,6 +193,38 @@ class Node(Entity):
                     if p.xml_ns in [XMPP_PUBSUB_OWNER_NS]:
                         if p.xml_name == 'purge':
                             node.node_name = p.get_attribute_value('node')                                 
+            elif i.xml_ns == XMPP_CLIENT_NS and i.xml_name == 'error':
+                node.error = Error.from_element(i)
+
+        return node
+
+    @staticmethod
+    def to_configure_element(e):
+        iq = Entity.to_element(e)
+        pubsub = E(u'pubsub', namespace=XMPP_PUBSUB_OWNER_NS, parent=iq)
+        attrs = {u'node': e.node_name}
+        c = E(u'configure', attributes=attrs, namespace=XMPP_PUBSUB_OWNER_NS, parent=pubsub)
+        c.xml_children(e.configure.x)
+        e.configure.x.xml_parent = c
+        return iq
+
+    @staticmethod
+    def from_configure_element(e):
+        node = Node(JID.parse(e.get_attribute_value('from')),
+                    JID.parse(e.get_attribute_value('to')),
+                    type=e.get_attribute_value('type'),
+                    stanza_id=e.get_attribute_value('id'))
+
+        for i in e.xml_children:
+            if i.xml_ns in [XMPP_PUBSUB_OWNER_NS]:
+                for p in i.xml_children:
+                    if p.xml_ns in [XMPP_PUBSUB_OWNER_NS]:
+                        if p.xml_name == 'configure':
+                            node.node_name = p.get_attribute_value('node')
+                        for x in p.xml_children:
+                            if x.xml_ns == XMPP_DATA_FORM_NS and x.xml_name == 'x':
+                                node.configure = Configure.from_element(x)
+                                break
             elif i.xml_ns == XMPP_CLIENT_NS and i.xml_name == 'error':
                 node.error = Error.from_element(i)
 
