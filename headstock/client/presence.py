@@ -13,17 +13,6 @@ from bridge.common import XMPP_CLIENT_NS, XMPP_ROSTER_NS
 
 __all__ = ['PresenceComponent', 'make_linkages']
 
-def make_linkages():
-    linkages = {("xmpp", "%s.presence" % XMPP_CLIENT_NS): ("presencedisp", "inbox"),
-                ("presencedisp", "log"): ('logger', "inbox"),
-                ("presencedisp", "xmpp.subscribe"): ("presencehandler", "requestedsub"),
-                ("presencedisp", "xmpp.unsubscribe"): ("presencehandler", "requestedunsub"),
-                ("presencehandler", "outbox"): ("presencedisp", "forward"),
-                ('jidsplit', 'presencejid'): ('presencehandler', 'jid'),
-                ("presencedisp", "outbox"): ("xmpp", "forward")}
-    return dict(presencedisp=PresenceDispatcher(),
-                presencehandler=PresenceComponent()), linkages
-
 class PresenceComponent(component):
     Inboxes = {"inbox"       : "headstock.api.contact.Presence instance",
                "control"     : "Shutdown the client stream",
@@ -64,40 +53,69 @@ class PresenceComponent(component):
             
             if self.dataReady("requestedsub"):
                 p = self.recv("requestedsub")
-                p.swap_jids()
-                self.send(p, "subrequested")
+                self.subscription_requested(p)
 
             if self.dataReady("requestedunsub"):
                 p = self.recv("requestedunsub")
-                p.swap_jids()
-                self.send(p, "unsubrequested")
+                self.unsubscription_requested(p)
 
             if self.dataReady("acceptsub"):
                 to_jid = self.recv("acceptsub")
-                p = Presence(from_jid=self.from_jid, to_jid=unicode(to_jid),
-                             type=u'subscribed')
-                self.send(p, "outbox")
+                self.accept_subscription(to_jid)
 
             if self.dataReady("rejectsub"):
                 to_jid = self.recv("rejectsub")
-                p = Presence(from_jid=self.from_jid, to_jid=unicode(to_jid),
-                             type=u'unsubscribed')
-                self.send(p, "outbox")
+                self.reject_subscription(to_jid)
 
             if self.dataReady("requestsub"):
                 to_jid = self.recv("requestsub")
-                p = Presence(from_jid=self.from_jid, to_jid=unicode(to_jid),
-                             type=u'subscribe')
-                self.send(p, "outbox")
+                self.request_subscription(to_jid)
 
             if self.dataReady("requestunsub"):
                 to_jid = self.recv("requestunsub")
-                p = Presence(from_jid=self.from_jid, to_jid=unicode(to_jid),
-                             type=u'unsubscribe')
-                self.send(p, "outbox")
+                self.request_unsubscription(to_jid)
 
-                
             if not self.anyReady():
                 self.pause()
   
             yield 1
+
+    def subscription_requested(self, p):
+        p.swap_jids()
+        self.send(p, "subrequested")
+
+    def unsubscription_requested(self, p):
+        p.swap_jids()
+        self.send(p, "unsubrequested")
+
+    def accept_subscription(self, jid):
+        p = Presence(from_jid=self.from_jid, to_jid=unicode(jid),
+                     type=u'subscribed')
+        self.send(p, "outbox")
+
+    def reject_subscription(self, jid):
+        p = Presence(from_jid=self.from_jid, to_jid=unicode(jid),
+                     type=u'unsubscribed')
+        self.send(p, "outbox")
+
+    def request_subscription(self, jid):
+        p = Presence(from_jid=self.from_jid, to_jid=unicode(jid),
+                     type=u'subscribe')
+        self.send(p, "outbox")
+        
+    def request_subscription(self, jid):
+        p = Presence(from_jid=self.from_jid, to_jid=unicode(jid),
+                     type=u'unsubscribe')
+        self.send(p, "outbox")
+        
+
+def make_linkages(presence_handler_cls=PresenceComponent):
+    linkages = {("xmpp", "%s.presence" % XMPP_CLIENT_NS): ("presencedisp", "inbox"),
+                ("presencedisp", "log"): ('logger', "inbox"),
+                ("presencedisp", "xmpp.subscribe"): ("presencehandler", "requestedsub"),
+                ("presencedisp", "xmpp.unsubscribe"): ("presencehandler", "requestedunsub"),
+                ("presencehandler", "outbox"): ("presencedisp", "forward"),
+                ('jidsplit', 'presencejid'): ('presencehandler', 'jid'),
+                ("presencedisp", "outbox"): ("xmpp", "forward")}
+    return dict(presencedisp=PresenceDispatcher(),
+                presencehandler=presence_handler_cls()), linkages

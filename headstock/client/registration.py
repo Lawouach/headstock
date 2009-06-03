@@ -12,20 +12,6 @@ from bridge.common import XMPP_IBR_NS
 
 __all__ = ['RegistrationComponent', 'make_linkages']
 
-def make_linkages():        
-    linkages = {("xmpp", "%s.query" % XMPP_IBR_NS): ("registerdisp", "inbox"),
-                ("registerdisp", "log"): ('logger', "inbox"),
-                ("registerdisp", "xmpp.error"): ("registerhandler", "error"),
-                ("registerdisp", "xmpp.result"): ("registerhandler", "inbox"),
-                ("registerhandler", "outbox"): ("registerdisp", "forward"),
-                ("registerhandler", "signal"): ("client", "control"),
-                ("client", "askregistration"): ("registerhandler", "register"),
-                ("client", "askunregistration"): ("registerhandler", "unregister"),
-                ('jidsplit', 'registerjid'): ('registerhandler', 'jid'),
-                ("registerdisp", "outbox"): ("xmpp", "forward"),}
-    return dict(registerdisp=RegisterDispatcher(),
-                registerhandler=RegistrationComponent()), linkages
-
 class RegistrationComponent(component):
     Inboxes = {"inbox"   : "headstock.api.registration.Registration",
                "error"   : "headstock.api.registration.Registration",
@@ -95,3 +81,17 @@ class RegistrationComponent(component):
                 self.pause()
   
             yield 1
+
+def make_linkages():        
+    linkages = {("xmpp", "%s.query" % XMPP_IBR_NS): ("registerdisp", "inbox"),
+                ("registerdisp", "log"): ('logger', "inbox"),
+                ("registerdisp", "xmpp.error"): ("registerhandler", "error"),
+                ("registerdisp", "xmpp.result"): ("registerhandler", "inbox"),
+                ("registerhandler", "outbox"): ("registerdisp", "forward"),
+                ("registerhandler", "signal"): ("client", "control"),
+                ("client", "askregistration"): ("registerhandler", "register"),
+                ("client", "askunregistration"): ("registerhandler", "unregister"),
+                ('jidsplit', 'registerjid'): ('registerhandler', 'jid'),
+                ("registerdisp", "outbox"): ("xmpp", "forward"),}
+    return dict(registerdisp=RegisterDispatcher(),
+                registerhandler=RegistrationComponent()), linkages

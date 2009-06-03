@@ -36,8 +36,10 @@ class CotTest(object):
         self.running = False
     
     def validate(self, stanza):
+        print "IN:", stanza.xml()
         for expected_stanza in self.expected_stanzas:
             self.matched = self.match_expected_stanza(stanza, expected_stanza)
+            print self.matched, expected_stanza.xml()
             if self.matched:
                 self.expected_stanzas.remove(expected_stanza)
                 break
@@ -45,14 +47,15 @@ class CotTest(object):
     def match_expected_stanza(self, stanza, exp_stanza):
         doc = D()
         doc.xml_children.append(stanza)
-        def recurse_children(parent):
-            for child in parent.xml_children:
+        def recurse_children(element):
+            for path in get_element_paths(element):
+                match = lookup(doc, path)
+                print path, type(match)
+                if not match:
+                    raise CotMatchError()
+
+            for child in element.xml_children:
                 if isinstance(child, E):
-                    for path in get_element_paths(child):
-                        match = lookup(doc, path)
-                        #print path, type(match)
-                        if not match:
-                            raise CotMatchError()
                     recurse_children(child)
 
         try:
@@ -105,15 +108,18 @@ class CotManager(object):
                 for stanza in self.current.run():
                     yield stanza
                     
-        if self.current and self.current.running:
-            self.current.complete()
-        
         self.exhausted = True
+        while not self.completed:
+            print "1"
+            yield None
+
+        self.current.complete()
         
     def ack_stanza(self, stanza):
         self.current.validate(stanza)
 
-        if self.exhausted and self.current.completed:
+        if self.exhausted:
+            print self.exhausted
             self.completed = True
 
     def report(self):
@@ -201,7 +207,6 @@ class CotScript(object):
         script.close()
 
         self.tests = tests
-        print tests
         return self
                     
 if __name__ == '__main__':

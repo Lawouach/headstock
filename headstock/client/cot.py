@@ -8,18 +8,6 @@ from bridge import Element as E
 
 __all__ = ['CotComponent', 'make_linkages']
 
-def make_linkages(cots):
-    comp = CotComponent()
-    linkages = {("cothandler", "log"): ('logger', "inbox"),
-                ("cothandler", "outbox"): ("xmpp", "forward"),
-                ("cothandler", "signal"): ("client", "control"),
-                ('jidsplit', 'cotjid'): ('cothandler', 'jid'),
-                ('boundsplit', 'cotbound'): ('cothandler', 'bound')}
-    for name, ns, cot in cots:
-        linkages[("xmpp", "%s.%s" % (ns, name))] = ("cothandler", "inbox")
-        comp.cots.add(cot)
-    return dict(cothandler=comp), linkages
-    
 class CotComponent(component):    
     Inboxes = {"inbox"   : "",
                "control" : "",
@@ -40,17 +28,19 @@ class CotComponent(component):
     def initComponents(self):
         return 1
 
-    def send_stanza(self):
+    def _send_stanza(self):
         try:
             stanza = self.stanzas.next()
-            self.send(stanza, 'outbox')
+            if stanza:
+                self.send(stanza, 'outbox')
         except StopIteration:
             pass
 
     def main(self):
         yield self.initComponents()
-
-        while 1:
+        
+        self.running = True
+        while self.running:
             if self.dataReady("control"):
                 mes = self.recv("control")
                 
@@ -69,16 +59,40 @@ class CotComponent(component):
             if self.dataReady("inbox"):
                 e = self.recv('inbox')
                 self.send(('INCOMING', e.xml_parent), 'log')
-                self.cots.ack_stanza(e.xml_parent)
+                self.ack_stanza(e.xml_parent)
                 self.send_stanza()
 
+            print self.cots.completed
             if self.cots.completed:
-                self.send(producerFinished(), "signal")
-                break
-                
-            if not self.anyReady():
+                self.completed()
+
+            if not self.anyReady() and self.running:
                 self.pause()
   
             yield 1
 
-        self.cots.report()
+    def start_job(self):
+        self._send_stanza()
+
+    def send_stanza(self):
+        self._send_stanza()
+
+    def ack_stanza(self, e):
+        self.cots.ack_stanza(e)
+
+    def completed(self):
+        self.send(producerFinished(), "signal")
+        self.running = False
+
+def make_linkages(cots, cot_handler_cls=CotComponent):
+    comp = cot_handler_cls()
+    linkages = {("cothandler", "log"): ('logger', "inbox"),
+                ("cothandler", "outbox"): ("xmpp", "forward"),
+                ("cothandler", "signal"): ("client", "control"),
+                ('jidsplit', 'cotjid'): ('cothandler', 'jid'),
+                ('boundsplit', 'cotbound'): ('cothandler', 'bound')}
+    for name, ns, cot in cots:
+        linkages[("xmpp", "%s.%s" % (ns, name))] = ("cothandler", "inbox")
+        comp.cots.add(cot)
+    return dict(cothandler=comp), linkages
+    

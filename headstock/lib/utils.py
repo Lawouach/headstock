@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import codecs
 try:
-    from hashlib import sha
+    from hashlib import sha1 as sha
 except ImportError:
     from sha import new as sha
 from time import time
