@@ -1,0 +1,25 @@
+send(Ask Roster): {
+<iq type="get" id="roster_1" >
+  <query xmlns="jabber:iq:roster"/>
+</iq>
+}
+expect(Ask Roster): {
+<iq type="result" id="roster_1" >
+  <query xmlns="jabber:iq:roster"/>
+</iq>
+}
+send(Add contact): {
+<iq type="set" id="roster_2">
+  <query xmlns="jabber:iq:roster">
+    <item jid="santa.claus@north.pole" name="claus"/>
+  </query>
+</iq>
+}
+expect: {
+<iq type="result" id="roster_2"/>
+<iq type="set" id="push">
+  <query xmlns="jabber:iq:roster">
+    <item jid="santa.claus@north.pole" name="claus" subscription="none"/>
+  </query>
+</iq>
+}
