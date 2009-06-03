@@ -82,11 +82,13 @@ class JobClient(object):
         self.client.registerComponents(components, linkages)
         
     def load_cot_scripts(self, cot_script):
-        from headstock.lib.cot import CotScript
+        from headstock.lib.cot import CotManager
         cots = []
+        manager = CotManager()
+        manager.add_cot_script(cot_script)
         
         from bridge.common import XMPP_ROSTER_NS
-        cots.append(('query', XMPP_ROSTER_NS, CotScript().load(cot_script)))
+        cots.append(('query', XMPP_ROSTER_NS, manager))
 
         return cots
 

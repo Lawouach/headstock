@@ -23,17 +23,17 @@ class CotComponent(component):
         self.from_jid = None
         self.cots = CotManager()
 
-        self.stanzas = self.cots.run()
-
     def initComponents(self):
         return 1
 
     def _send_stanza(self):
         try:
-            stanza = self.stanzas.next()
+            stanza = self.cots.stanzas.next()
+            print "OUT:", stanza.xml()
             if stanza:
                 self.send(stanza, 'outbox')
         except StopIteration:
+            self.cots.exhausted = True
             pass
 
     def main(self):
@@ -59,10 +59,9 @@ class CotComponent(component):
             if self.dataReady("inbox"):
                 e = self.recv('inbox')
                 self.send(('INCOMING', e.xml_parent), 'log')
-                self.ack_stanza(e.xml_parent)
                 self.send_stanza()
+                self.ack_stanza(e.xml_parent)
 
-            print self.cots.completed
             if self.cots.completed:
                 self.completed()
 
@@ -91,8 +90,8 @@ def make_linkages(cots, cot_handler_cls=CotComponent):
                 ("cothandler", "signal"): ("client", "control"),
                 ('jidsplit', 'cotjid'): ('cothandler', 'jid'),
                 ('boundsplit', 'cotbound'): ('cothandler', 'bound')}
-    for name, ns, cot in cots:
+    for name, ns, manager in cots:
         linkages[("xmpp", "%s.%s" % (ns, name))] = ("cothandler", "inbox")
-        comp.cots.add(cot)
+        comp.cots = manager
     return dict(cothandler=comp), linkages
     

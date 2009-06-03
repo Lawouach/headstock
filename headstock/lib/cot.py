@@ -9,62 +9,7 @@ from bridge.filter import lookup
 
 command_regex = re.compile(r"^(.+)\((.*)\):|^(.+):")
 
-__all__ = ['CotScript', 'CotManager', 'CotTest']
-
-class CotTest(object):
-    def __init__(self, name):
-        self.name = name
-        self.running = False
-        self.completed = False
-        self.stanzas = []
-        self.expected_stanzas = []
-
-        self.start = self.end = None
-        self.matched = False
-
-    def initiate(self):
-        self.running = True
-        self.start = time.time()
-
-    def run(self):
-        for stanza in self.stanzas:
-            yield stanza
-        self.completed = True
-
-    def complete(self):
-        self.end = time.time()
-        self.running = False
-    
-    def validate(self, stanza):
-        print "IN:", stanza.xml()
-        for expected_stanza in self.expected_stanzas:
-            self.matched = self.match_expected_stanza(stanza, expected_stanza)
-            print self.matched, expected_stanza.xml()
-            if self.matched:
-                self.expected_stanzas.remove(expected_stanza)
-                break
-
-    def match_expected_stanza(self, stanza, exp_stanza):
-        doc = D()
-        doc.xml_children.append(stanza)
-        def recurse_children(element):
-            for path in get_element_paths(element):
-                match = lookup(doc, path)
-                print path, type(match)
-                if not match:
-                    raise CotMatchError()
-
-            for child in element.xml_children:
-                if isinstance(child, E):
-                    recurse_children(child)
-
-        try:
-            recurse_children(exp_stanza)
-        except CotMatchError:
-            return False
-
-        return True
-        
+__all__ = ['CotScript', 'CotManager']
 
 class CotMatchError(BaseException):
     pass
@@ -90,78 +35,102 @@ def get_element_paths(element):
 
 class CotManager(object):
     def __init__(self):
-        self.cots = []
         self.current = None
         self.exhausted = False
         self.completed = False
-        
-    def add(self, cot):
-        self.cots.append(cot)
 
-    def run(self):
-        for cot in self.cots:
-            for test in cot.next_test():
-                if self.current:
-                    self.current.complete()
-                self.current = test
-                self.current.initiate()
-                for stanza in self.current.run():
-                    yield stanza
-                    
-        self.exhausted = True
-        while not self.completed:
-            print "1"
-            yield None
+        self.series = {}
 
-        self.current.complete()
+        self._stanzas = []
+        self.expected_stanzas = []
+
+    @property
+    def stanzas(self):
+        for test_name, stanza in self._stanzas:
+            stanza_id = stanza.get_attribute_value('id')
+            self.series[stanza_id] = {'test': test_name, 'start': time.time(), 'end': None,
+                                      'matched': False, 'type': stanza.xml_name,
+                                      'ns': stanza.xml_ns}
+            yield stanza
+
+    def add_cot_script(self, cot_script):
+        self._stanzas, self.expected_stanzas = CotScript.load(cot_script)
+      
+    def validate(self, stanza):
+        print "IN:", stanza.xml()
+        matched = False
+        for expected_stanza in self.expected_stanzas:
+            matched = self.match_expected_stanza(stanza, expected_stanza)
+            if matched:
+                stanza_id = expected_stanza.get_attribute_value('id')
+                self.series[stanza_id]['matched'] = True
+                self.series[stanza_id]['end'] = time.time()
+                self.expected_stanzas.remove(expected_stanza)
+                break
+
+    def match_expected_stanza(self, stanza, exp_stanza):
+        doc = D()
+        doc.xml_children.append(stanza)
+        def recurse_children(element):
+            for path in get_element_paths(element):
+                match = lookup(doc, path)
+                #print path, type(match)
+                if not match:
+                    raise CotMatchError()
+
+            for child in element.xml_children:
+                if isinstance(child, E):
+                    recurse_children(child)
+
+        try:
+            recurse_children(exp_stanza)
+        except CotMatchError:
+            return False
+
+        return True
         
     def ack_stanza(self, stanza):
-        self.current.validate(stanza)
+        self.validate(stanza)
 
+        print self.exhausted
         if self.exhausted:
-            print self.exhausted
             self.completed = True
 
     def report(self):
         print
-        for cot in self.cots:
-            for test in cot.next_test():
-                if test.matched:
-                    print "%s: succeeded in %.3fs" % (test.name, (test.end - test.start))
-                else:
-                    print "%s: failed in %.3fs" % (test.name,(test.end - test.start))
+        for serie in self.series.values():
+            if serie['matched'] and serie['end']:
+                print "%s: succeeded in %.3fs" % (serie['test'], (serie['end'] - serie['start']))
+            elif serie['end']:
+                print "%s: failed in %.3fs" % (serie['test'], (serie['end'] - serie['start']))
+            else:
+                print "%s: failed" % (serie['test'],)
 
-                print "Remaining expected stanzas that weren't used in matching:"
-                for stanza in test.expected_stanzas:
-                    print stanza.xml(omit_declaration=True, indent=True)
-
-                print
+        print "Remaining expected stanzas that weren't used in matching:"
+        for stanza in self.expected_stanzas:
+            print stanza.xml(omit_declaration=True, indent=True)
+                
         print
 
 SEND_MODE = 0
 EXPECT_MODE = 1
 
 class CotScript(object):
-    def __init__(self):
-        self.tests = []
-
-    def next_test(self):
-        for test in self.tests:
-            yield test
-
-    def load(self, path):
+    @staticmethod
+    def load(path):
         script = file(path, 'r')
         
-        tests = []
-        current = None
         mode = SEND_MODE
         
         inside_command = False
         buf = []
+
+        stanzas = []
+        expected_stanzas = []
+        current_test_name = None
         
         for line in script:
             line = line.strip()
-
             if not inside_command:
                 if not line:
                     continue
@@ -176,14 +145,12 @@ class CotScript(object):
                 result = m.groups()
                 command = result[0] or result[2]
                 if command == 'send':
-                    if current and mode == EXPECT_MODE:
-                        tests.append(current)
-                    current = CotTest(name=result[1])
+                    current_test_name = result[1]
                     mode = SEND_MODE
                 elif command == 'expect':
                     mode = EXPECT_MODE
                 inside_command = True
-            elif line.endswith('}'):
+            elif line.endswith('}') and inside_command:
                 inside_command = False
                 xml = u'<root xmlns="%s">' % XMPP_CLIENT_NS
                 xml += ''.join(buf)
@@ -193,21 +160,17 @@ class CotScript(object):
                 for child in root.xml_children:
                     child.xml_parent = None
                     if mode == SEND_MODE:
-                        current.stanzas.append(child)
+                        stanzas.append((current_test_name, child))
                     elif mode == EXPECT_MODE:
-                        current.expected_stanzas.append(child)
+                        expected_stanzas.append(child)
 
                 buf = []
             else:
                 buf.append(line)
 
-        if current:
-            tests.append(current)
-            
         script.close()
 
-        self.tests = tests
-        return self
+        return iter(stanzas), expected_stanzas
                     
 if __name__ == '__main__':
     import sys, pprint
