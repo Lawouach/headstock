@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import itertools
 import re
 import time
 
@@ -35,12 +36,9 @@ def get_element_paths(element):
 
 class CotManager(object):
     def __init__(self):
-        self.current = None
-        self.exhausted = False
-        self.completed = False
-
         self.series = {}
-
+        self.nb_stanzas = 0
+        self.current_index = 0
         self._stanzas = []
         self.expected_stanzas = []
 
@@ -51,20 +49,28 @@ class CotManager(object):
             self.series[stanza_id] = {'test': test_name, 'start': time.time(), 'end': None,
                                       'matched': False, 'type': stanza.xml_name,
                                       'ns': stanza.xml_ns}
+            self.current_index += 1
             yield stanza
+            
+    @property
+    def exhausted(self):
+        return self.current_index == self.nb_stanzas
 
     def add_cot_script(self, cot_script):
-        self._stanzas, self.expected_stanzas = CotScript.load(cot_script)
-      
+        stanzas, expected_stanzas = CotScript.load(cot_script)
+        self.nb_stanzas += len(stanzas)
+        self._stanzas = itertools.chain(self._stanzas, stanzas)
+        self.expected_stanzas.extend(expected_stanzas)
+
     def validate(self, stanza):
-        print "IN:", stanza.xml()
         matched = False
         for expected_stanza in self.expected_stanzas:
             matched = self.match_expected_stanza(stanza, expected_stanza)
             if matched:
                 stanza_id = expected_stanza.get_attribute_value('id')
-                self.series[stanza_id]['matched'] = True
-                self.series[stanza_id]['end'] = time.time()
+                if stanza_id in self.series:
+                    self.series[stanza_id]['matched'] = True
+                    self.series[stanza_id]['end'] = time.time()
                 self.expected_stanzas.remove(expected_stanza)
                 break
 
@@ -91,10 +97,6 @@ class CotManager(object):
         
     def ack_stanza(self, stanza):
         self.validate(stanza)
-
-        print self.exhausted
-        if self.exhausted:
-            self.completed = True
 
     def report(self):
         print
@@ -170,7 +172,7 @@ class CotScript(object):
 
         script.close()
 
-        return iter(stanzas), expected_stanzas
+        return stanzas, expected_stanzas
                     
 if __name__ == '__main__':
     import sys, pprint

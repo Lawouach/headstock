@@ -29,7 +29,7 @@ class RosterComponent(component):
                 "message"     : "Message to send",
                 "roster"      : "",
                 "removed"     : "",
-                "added"     : "",
+                "added"       : "",
                 "activity"    : "headstock.api.activity.Activity instance to send to the server"}
 
     def __init__(self):
@@ -133,6 +133,6 @@ def make_linkages(roster_handler_cls=RosterComponent):
                 ('jidsplit', 'contactjid'): ('rosterhandler', 'jid'),
                 ('boundsplit', 'contactbound'): ('rosterhandler', 'bound'),
                 ("rosterdisp", "outbox"): ("xmpp", "forward")}
-    return dict(rosterdisp=RosterDispatcher(),
+    return dict(rosterdisp=RosterDispatcher(), 
                 rosterhandler=roster_handler_cls()), linkages
     

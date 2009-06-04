@@ -49,8 +49,7 @@ class Client(component):
     def __init__(self, username, password, domain, resource=u"headstock", 
                  hostname=u'localhost', port=5222, usetls=False, register=False,
                  unregister=False, password_lookup =None,
-                 log_file_path=None, log_to_console=False,
-                 when_active=None):
+                 log_file_path=None, log_to_console=False):
         super(Client, self).__init__() 
         self.jid = JID(username, domain, resource)
         self.username = username
@@ -67,7 +66,6 @@ class Client(component):
         if password_lookup:
             self.password_lookup = password_lookup
         self.graph = None
-        self.when_active = when_active
 
         ClientStream.Outboxes["%s.query" % XMPP_IBR_NS] = "Registration"
         ClientStream.Outboxes["%s.query" % XMPP_LAST_NS] = "Activity"
@@ -168,7 +166,13 @@ class Client(component):
         o = OneShot(msg=shutdownMicroprocess())
         o.link((o, 'outbox'), (self, 'control'))
         o.activate()
-        
+
+    def active(self):
+        pass
+
+    def unhandled_stanza(self, stanza):
+        self.send(('UNHANDLED', msg), 'log')
+
     def initializeComponents(self):
         self.graph = Graphline(**self.base_graph)
         self.addChildren(self.graph)
@@ -191,8 +195,8 @@ class Client(component):
                     yield 1
 
             if self.dataReady("unhandled"):
-                msg = self.recv('unhandled')
-                #self.send(('UNHANDLED', msg), 'log')
+                stanza = self.recv('unhandled')
+                self.unhandled_stanza(stanza)
                 
             if self.dataReady("inbox"):
                 self.recv('inbox')
@@ -210,8 +214,7 @@ class Client(component):
                 
             if self.dataReady("bound"):
                 self.recv('bound')
-                if self.when_active:
-                    self.when_active(self.jid)
+                self.active()
 
             if self.dataReady("error"):
                 e = self.recv('error')

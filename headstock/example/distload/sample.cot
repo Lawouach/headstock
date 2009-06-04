@@ -23,3 +23,11 @@ expect: {
   </query>
 </iq>
 }
+send(Ask software version): {
+<iq type="get" id="version_1" from="${from-id}" to="${from-id}">
+  <query xmlns="jabber:iq:version"/>
+</iq>
+}
+expect: {
+<iq type="result" id="version_1" />
+}

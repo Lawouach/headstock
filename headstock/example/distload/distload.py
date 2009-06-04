@@ -59,7 +59,6 @@ class Config(object):
 class JobClient(object):
     def __init__(self, options, stdout_log=False, log_path=None):
         from headstock.client import Client
-
         self.client = Client(unicode(options.username), 
                              unicode(options.password), 
                              unicode(options.domain),
@@ -77,20 +76,17 @@ class JobClient(object):
         pass
 
     def add_extensions(self, options):
-        from headstock.client.cot import make_linkages
-        components, linkages = make_linkages(self.load_cot_scripts(options.cot_file_path))
-        self.client.registerComponents(components, linkages)
-        
-    def load_cot_scripts(self, cot_script):
         from headstock.lib.cot import CotManager
-        cots = []
         manager = CotManager()
-        manager.add_cot_script(cot_script)
+        manager.add_cot_script(options.cot_file_path)
         
+        mapping = []
         from bridge.common import XMPP_ROSTER_NS
-        cots.append(('query', XMPP_ROSTER_NS, manager))
-
-        return cots
+        mapping.append(('query', XMPP_ROSTER_NS))
+        
+        from headstock.client.cot import make_linkages
+        components, linkages = make_linkages(mapping, manager)
+        self.client.registerComponents(components, linkages)
 
     def report(self):
         cot_component = self.client.get_component('cothandler')
