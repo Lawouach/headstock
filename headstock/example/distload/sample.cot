@@ -34,3 +34,14 @@ expect: {
     <error code="404" type="cancel"><remote-server-not-found xmlns="urn:ietf:params:xml:ns:xmpp-stanzas" /></error>
 </iq>
 }
+send(Ask last activity): {
+<iq from="${from-id}" id="last1" to="${to-id}" type="get">
+  <query xmlns="jabber:iq:last" />
+</iq>
+}
+expect: {
+<iq xmlns="jabber:client" to="${from-id}" from="santa.claus@north.pole" id="last1" type="error">
+    <query xmlns="jabber:iq:last" />
+    <error code="404" type="cancel"><remote-server-not-found xmlns="urn:ietf:params:xml:ns:xmpp-stanzas" /></error>
+</iq>
+}

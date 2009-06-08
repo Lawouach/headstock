@@ -85,6 +85,7 @@ class CotManager(object):
     def match_expected_stanza(self, stanza, exp_stanza):
         doc = D()
         doc.xml_children.append(stanza)
+        stanza.xml_parent = doc
         def recurse_children(element):
             for path in get_element_paths(element):
                 match = lookup(doc, path)
@@ -99,8 +100,12 @@ class CotManager(object):
         try:
             recurse_children(exp_stanza)
         except CotMatchError:
+            stanza.xml_parent = None
+            doc.xml_children = []
             return False
 
+        stanza.xml_parent = None
+        doc.xml_children = []
         return True
         
     def ack_stanza(self, from_jid, stanza):

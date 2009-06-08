@@ -91,7 +91,7 @@ class JobClient(object):
         self.client.registerComponents(components, linkages)
 
         from headstock.lib.monitor import make_linkages
-        components, linkages = make_linkages(3.0)
+        components, linkages = make_linkages(2.0)
         self.client.registerComponents(components, linkages)
 
     def report(self):
