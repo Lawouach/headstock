@@ -62,9 +62,17 @@ class CotManager(object):
         self._stanzas = itertools.chain(self._stanzas, stanzas)
         self.expected_stanzas.extend(expected_stanzas)
 
-    def validate(self, stanza):
+    def validate(self, jid, stanza):
         matched = False
         for expected_stanza in self.expected_stanzas:
+            from_jid = expected_stanza.get_attribute_value('from')
+            if from_jid == '${from-id}':
+                expected_stanza.set_attribute_value(u'from', unicode(jid))
+            
+            to_jid = expected_stanza.get_attribute_value('to')
+            if to_jid == '${from-id}':
+                expected_stanza.set_attribute_value(u'to', unicode(jid))
+            
             matched = self.match_expected_stanza(stanza, expected_stanza)
             if matched:
                 stanza_id = expected_stanza.get_attribute_value('id')
@@ -95,8 +103,8 @@ class CotManager(object):
 
         return True
         
-    def ack_stanza(self, stanza):
-        self.validate(stanza)
+    def ack_stanza(self, from_jid, stanza):
+        self.validate(from_jid, stanza)
 
     def report(self):
         print

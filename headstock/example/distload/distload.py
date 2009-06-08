@@ -81,16 +81,22 @@ class JobClient(object):
         manager.add_cot_script(options.cot_file_path)
         
         mapping = []
-        from bridge.common import XMPP_ROSTER_NS
+        from bridge.common import XMPP_ROSTER_NS, XMPP_LAST_NS, XMPP_VERSION_NS
         mapping.append(('query', XMPP_ROSTER_NS))
+        mapping.append(('query', XMPP_LAST_NS))
+        mapping.append(('query', XMPP_VERSION_NS))
         
         from headstock.client.cot import make_linkages
         components, linkages = make_linkages(mapping, manager)
         self.client.registerComponents(components, linkages)
 
+        from headstock.lib.monitor import make_linkages
+        components, linkages = make_linkages(3.0)
+        self.client.registerComponents(components, linkages)
+
     def report(self):
         cot_component = self.client.get_component('cothandler')
-        cot_component.cots.report()
+        cot_component.manager.report()
 
 XMPPClientOption = namedtuple("XMPPClientOption", "username password domain resource hostname port tls")
 
@@ -165,7 +171,7 @@ class XMPPDistributedLoadManager(object):
             job = self.config.get_section_by_suffix('job', str(i))
             if job:
                 self.log("Adding job: %s" % job.name)
-                LoadRunnerProcess(job).start()
+                LoadRunnerProcess(job).run() #start()
 
         end_time = datetime.utcnow()
         self.log("Finishing run: %s" % end_time.isoformat())
@@ -179,7 +185,7 @@ if __name__ == '__main__':
         from optparse import OptionParser
         parser = OptionParser()
         parser.add_option("-c", "--config", dest="config",
-                          help="Concifguration file")
+                          help="Configuration file")
         (options, args) = parser.parse_args()
 
         return options

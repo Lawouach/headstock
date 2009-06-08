@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 import random
+import time
 
 from Axon.Component import component
 from Axon.Ipc import shutdownMicroprocess, producerFinished
-from Kamaelia.Util.Clock import CheapAndCheerfulClock  
 
 from headstock.api.contact import Roster
 from headstock.lib.cot import CotManager
@@ -33,10 +33,6 @@ class CotComponent(component):
         self.started = False
 
     def initComponents(self):
-        self.clock = CheapAndCheerfulClock(self.monitor_freq)
-        self.link((self.clock, 'outbox'), (self, 'ping'))
-        self.addChildren(self.clock)
-        self.clock.activate()
         return 1
 
     def _send_stanza(self):
@@ -69,7 +65,8 @@ class CotComponent(component):
 
             if self.dataReady("inbox"):
                 e = self.recv('inbox')
-                if e.xml_ns == XMPP_ROSTER_NS and e.xml_parent.get_attribute_value('type') == 'result':
+                if e.xml_ns == XMPP_ROSTER_NS and \
+                       e.xml_parent.get_attribute_value('type') == 'result':
                     roster = Roster.from_element(e)
                     self.roster_updated(roster)
                     if not self.started:
@@ -83,13 +80,15 @@ class CotComponent(component):
                 self.recv('ping')
                 if self.manager.exhausted:
                     self.completed()
-                    self.clock.stop()
-                    self.removeChild(self.clock)
-
-            if not self.anyReady() and self.running:
+                    
+            if self.running and not self.anyReady():
                 self.pause()
   
             yield 1
+
+        self.send(producerFinished(), "signal")
+        
+        yield 1
 
     def start_job(self):
         self.started = True
@@ -102,7 +101,7 @@ class CotComponent(component):
         self._send_stanza()
 
     def ack_stanza(self, e):
-        self.manager.ack_stanza(e)
+        self.manager.ack_stanza(self.from_jid, e)
 
     def fill_stanza(self, stanza):
         from_jid = stanza.get_attribute_value('from')
@@ -124,7 +123,6 @@ class CotComponent(component):
             return item[0]
 
     def completed(self):
-        self.send(producerFinished(), "signal")
         self.running = False
 
 def make_linkages(mapping, manager, cot_handler_cls=CotComponent):
@@ -132,6 +130,7 @@ def make_linkages(mapping, manager, cot_handler_cls=CotComponent):
     linkages = {("cothandler", "log"): ('logger', "inbox"),
                 ("cothandler", "outbox"): ("xmpp", "forward"),
                 ("cothandler", "signal"): ("client", "control"),
+                ("client", "pong"): ("cothandler", "ping"),
                 ('jidsplit', 'cotjid'): ('cothandler', 'jid'),
                 ('boundsplit', 'cotbound'): ('cothandler', 'bound')}
     for name, ns in mapping:

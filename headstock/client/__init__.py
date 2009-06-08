@@ -25,7 +25,7 @@ from bridge import Element as E
 from bridge.common import XMPP_CLIENT_NS, XMPP_ROSTER_NS, \
     XMPP_LAST_NS, XMPP_DISCO_INFO_NS, XMPP_IBR_NS, \
     XMPP_DISCO_ITEMS_NS, XMPP_PUBSUB_NS, XMPP_PUBSUB_EVENT_NS,\
-    XMPP_PUBSUB_OWNER_NS
+    XMPP_PUBSUB_OWNER_NS, XMPP_VERSION_NS
 
 _all__ = ['Client']
   
@@ -36,6 +36,7 @@ class Client(component):
                "streamfeat" : "",
                "unhandled"  : "",
                "error"      : "",
+               "ping"       : "",
                "control"    : "Shutdown the client stream"}
     
     Outboxes = {"outbox"  : "",
@@ -43,6 +44,8 @@ class Client(component):
                 "log"     : "",
                 "doauth"  : "",
                 "signal"  : "Shutdown signal",
+                "pong"    : "",
+                "_stopmonitor": "",
                 "askregistration" : "",
                 "askunregistration" : ""}
 
@@ -69,6 +72,7 @@ class Client(component):
 
         ClientStream.Outboxes["%s.query" % XMPP_IBR_NS] = "Registration"
         ClientStream.Outboxes["%s.query" % XMPP_LAST_NS] = "Activity"
+        ClientStream.Outboxes["%s.query" % XMPP_VERSION_NS] = "Version software"
         ClientStream.Outboxes["%s.query" % XMPP_DISCO_INFO_NS] = "Discovery"
         ClientStream.Outboxes["%s.query" % XMPP_DISCO_ITEMS_NS] = "PubSub Discovery of Nodes"
         ClientStream.Outboxes["%s.subscribe" % XMPP_PUBSUB_NS] = "Pubsub subscription handler"
@@ -171,8 +175,9 @@ class Client(component):
         pass
 
     def unhandled_stanza(self, stanza):
-        self.send(('UNHANDLED', msg), 'log')
-
+        #self.send(('UNHANDLED', stanza), 'log')
+        pass
+    
     def initializeComponents(self):
         self.graph = Graphline(**self.base_graph)
         self.addChildren(self.graph)
@@ -187,17 +192,24 @@ class Client(component):
         while self.running:
             if self.dataReady("control"):
                 mes = self.recv("control")
-
+                
                 if isinstance(mes, shutdownMicroprocess) or \
                        isinstance(mes, producerFinished):
+                    self.send(producerFinished(), "_stopmonitor")
                     self.close()
-                    self.running = False
                     yield 1
+                    self.send(producerFinished(), "signal")
+                    yield 1
+                    self.running = False
 
             if self.dataReady("unhandled"):
                 stanza = self.recv('unhandled')
                 self.unhandled_stanza(stanza)
-                
+
+            if self.dataReady("ping"):
+                self.send(self.recv('ping'), 'pong')
+                yield 1
+
             if self.dataReady("inbox"):
                 self.recv('inbox')
 
@@ -225,7 +237,7 @@ class Client(component):
                 
             if self.running and not self.anyReady():
                 self.pause()
-  
+            
             yield 1
 
         if self.unregister:

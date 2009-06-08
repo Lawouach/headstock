@@ -24,10 +24,13 @@ expect: {
 </iq>
 }
 send(Ask software version): {
-<iq type="get" id="version_1" from="${from-id}" to="${from-id}">
+<iq type="get" id="version_1" from="${from-id}" to="santa.claus@north.pole">
   <query xmlns="jabber:iq:version"/>
 </iq>
 }
 expect: {
-<iq type="result" id="version_1" />
+<iq xmlns="jabber:client" to="${from-id}" from="santa.claus@north.pole" id="version_1" type="error">
+    <query xmlns="jabber:iq:version" />
+    <error code="404" type="cancel"><remote-server-not-found xmlns="urn:ietf:params:xml:ns:xmpp-stanzas" /></error>
+</iq>
 }
