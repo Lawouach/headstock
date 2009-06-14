@@ -21,8 +21,18 @@ class ThreadedMonitor(threadedcomponent):
                     self.send(producerFinished(), "signal")
                     break
                 
+            if self.interval > 0:
+                time.sleep(self.interval)
+            else:
+                break
+
             self.send(True, "outbox")
-            time.sleep(self.interval)
+
+            while not self.anyReady():
+                self.pause()
+
+            if self.dataReady('inbox'):
+                self.interval = self.recv('inbox')
 
 def make_linkages(freq):
     linkages = {("monitor", "outbox"): ('client', "ping"),

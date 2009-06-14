@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 import random
-import time
 
 from Axon.Component import component
 from Axon.Ipc import shutdownMicroprocess, producerFinished
@@ -9,30 +8,49 @@ from headstock.api.contact import Roster
 from headstock.lib.cot import CotManager
 
 from bridge import Element as E
-from bridge.common import XMPP_ROSTER_NS
-
+from bridge.common import XMPP_CLIENT_NS, XMPP_ROSTER_NS, XMPP_LAST_NS, \
+     XMPP_VERSION_NS, XMPP_PUBSUB_NS, XMPP_PUBSUB_OWNER_NS
+        
 __all__ = ['CotComponent', 'make_linkages']
 
 class CotComponent(component):    
     Inboxes = {"inbox"   : "",
                "control" : "",
                "ping"    : "",
+               "healthcheck": "",
                "jid"     : "",
                "bound"   : ""}
     
-    Outboxes = {"outbox" : "",
-                "signal" : "",
-                "log"    : ""}
+    Outboxes = {"outbox"   : "",
+                "signal"   : "",
+                "_monitor" : "",
+                "log"      : ""}
 
-    def __init__(self, monitor_freq=3.0):
-        super(CotComponent, self).__init__() 
-        self.monitor_freq = monitor_freq
+    def __init__(self, keep_alive=True, timeout=10):
+        super(CotComponent, self).__init__()
         self.from_jid = None
         self.manager = None
         self.roster = None
         self.started = False
+        self.keep_alive = keep_alive
+        self.timeout = timeout
+
+        self.stanza_filler_mapping = {}
+        self.stanza_filler_mapping[('iq', XMPP_CLIENT_NS)] = self.fill_iq_expected_stanza
+        self.stanza_filler_mapping[('query', XMPP_ROSTER_NS)] = self.fill_roster_expected_stanza
+        self.stanza_filler_mapping[('query', XMPP_LAST_NS)] = self.fill_last_expected_stanza
+        self.stanza_filler_mapping[('query', XMPP_VERSION_NS)] = self.fill_version_expected_stanza
+        self.stanza_filler_mapping[('pubsub', XMPP_PUBSUB_NS)] = self.fill_pubsub_expected_stanza
+        self.stanza_filler_mapping[('pubsub', XMPP_PUBSUB_OWNER_NS)] = self.fill_pubsub_expected_stanza
 
     def initComponents(self):
+        if self.timeout > 0:
+            from headstock.lib.monitor import ThreadedMonitor
+            self.monitor = ThreadedMonitor(self.timeout)
+            self.link((self.monitor, 'outbox'), (self, 'healthcheck'))
+            self.link((self, '_monitor'), (self.monitor, 'inbox'))
+            self.addChildren(self.monitor)
+            self.monitor.activate()
         return 1
 
     def _send_stanza(self):
@@ -42,11 +60,14 @@ class CotComponent(component):
                 stanza = self.fill_stanza(stanza)
                 self.send(stanza, 'outbox')
         except StopIteration:
-            pass
+            self.manager.exhausted = True
+        except Exception, ex:
+            self.send(str(ex), 'log')
+            raise
 
     def main(self):
         yield self.initComponents()
-        
+            
         self.running = True
         while self.running:
             if self.dataReady("control"):
@@ -65,21 +86,42 @@ class CotComponent(component):
 
             if self.dataReady("inbox"):
                 e = self.recv('inbox')
-                if e.xml_ns == XMPP_ROSTER_NS and \
-                       e.xml_parent.get_attribute_value('type') == 'result':
+                iq = e.xml_parent
+                
+                if e.xml_name == 'iq' and e.xml_ns == XMPP_CLIENT_NS:
+                    iq = e
+                elif e.xml_ns == XMPP_ROSTER_NS:
                     roster = Roster.from_element(e)
                     self.roster_updated(roster)
                     if not self.started:
                         self.start_job()
-                    
-                self.send(('INCOMING', e.xml_parent), 'log')
-                self.ack_stanza(e.xml_parent)
-                self.send_stanza()
 
+                if self.manager.is_expected(iq):
+                    if not self.manager.reviewed(iq):
+                        self.send(('INCOMING', iq), 'log')
+                        try:
+                            self.ack_stanza(iq)
+                        except Exception, ex:
+                            print ex
+                            raise
+                        self.send_stanza()
+                    
+                    if not self.keep_alive and self.manager.completed:
+                        self.completed()
+                    
+            if self.dataReady("healthcheck"):
+                self.recv("healthcheck")
+                print self.manager.completed
+                if self.manager.completed:
+                    self.send(-1, '_monitor')
+                    self.removeChild(self.monitor)
+                    self.completed()
+                else:
+                    self.send(self.timeout, '_monitor')
+                        
             if self.dataReady("ping"):
                 self.recv('ping')
-                if self.manager.exhausted:
-                    self.completed()
+                self.pinged()
                     
             if self.running and not self.anyReady():
                 self.pause()
@@ -94,6 +136,18 @@ class CotComponent(component):
         self.started = True
         self._send_stanza()
 
+    def pick_contact(self):
+        if self.roster.items:
+            item = random.sample(self.roster.items, 1)
+            if item:
+                return item[0]
+
+    def completed(self):
+        self.running = False
+
+    def pinged(self):
+        pass
+
     def roster_updated(self, roster):
         self.roster = roster
 
@@ -101,7 +155,7 @@ class CotComponent(component):
         self._send_stanza()
 
     def ack_stanza(self, e):
-        self.manager.ack_stanza(self.from_jid, e)
+        self.manager.ack_stanza(e, self.fill_expected_stanza)
 
     def fill_stanza(self, stanza):
         from_jid = stanza.get_attribute_value('from')
@@ -115,17 +169,61 @@ class CotComponent(component):
         elif to_jid == '${from-id}':
             stanza.set_attribute_value(u'to', unicode(self.from_jid))
 
+        def _traverse(e):
+            if (e.xml_name, e.xml_ns) in self.stanza_filler_mapping:
+                e = self.stanza_filler_mapping[(e.xml_name, e.xml_ns)](e)
+            for child in e.xml_children:
+                _traverse(child)
+
+        _traverse(stanza)
+
         return stanza
 
-    def pick_contact(self):
-        item = random.sample(self.roster.items, 1)
-        if item:
-            return item[0]
+    def fill_expected_stanza(self, stanza):
+        from_jid = stanza.get_attribute_value('from')
+        if from_jid == '${from-id}':
+            stanza.set_attribute_value(u'from', unicode(self.from_jid))
+            
+        to_jid = stanza.get_attribute_value('to')
+        if to_jid == '${from-id}':
+            stanza.set_attribute_value(u'to', unicode(self.from_jid))
 
-    def completed(self):
-        self.running = False
+        def _traverse(e):
+            if (e.xml_name, e.xml_ns) in self.stanza_filler_mapping:
+                e = self.stanza_filler_mapping[(e.xml_name, e.xml_ns)](e)
+            for child in e.xml_children:
+                _traverse(child)
 
-def make_linkages(mapping, manager, cot_handler_cls=CotComponent):
+        _traverse(stanza)
+
+        return stanza
+
+    def fill_iq_expected_stanza(self, stanza):
+        return stanza
+    
+    def fill_roster_expected_stanza(self, stanza):
+        return stanza
+            
+    def fill_version_expected_stanza(self, stanza):
+        return stanza
+            
+    def fill_last_expected_stanza(self, stanza):
+        return stanza
+            
+    def fill_pubsub_expected_stanza(self, stanza):
+        def _traverse(e):
+            node = e.get_attribute_value('node')
+            if node:
+                node = unicode(node).replace('${node-id}', self.from_jid.node)
+                e.set_attribute_value(u'node', node)
+
+            for child in e.xml_children:
+                _traverse(child)
+                
+        _traverse(stanza)
+        return stanza
+            
+def make_linkages(manager, cot_handler_cls=CotComponent):
     comp = cot_handler_cls()
     linkages = {("cothandler", "log"): ('logger', "inbox"),
                 ("cothandler", "outbox"): ("xmpp", "forward"),
@@ -133,8 +231,17 @@ def make_linkages(mapping, manager, cot_handler_cls=CotComponent):
                 ("client", "pong"): ("cothandler", "ping"),
                 ('jidsplit', 'cotjid'): ('cothandler', 'jid'),
                 ('boundsplit', 'cotbound'): ('cothandler', 'bound')}
+    mapping = []
+    mapping.append(('iq', XMPP_CLIENT_NS))
+    mapping.append(('query', XMPP_ROSTER_NS))
+    mapping.append(('query', XMPP_LAST_NS))
+    mapping.append(('query', XMPP_VERSION_NS))
+    mapping.append(('pubsub', XMPP_PUBSUB_NS))
+    mapping.append(('pubsub', XMPP_PUBSUB_OWNER_NS))
+
     for name, ns in mapping:
         linkages[("xmpp", "%s.%s" % (ns, name))] = ("cothandler", "inbox")
+        
     comp.manager = manager
     return dict(cothandler=comp), linkages
     

@@ -41,45 +41,48 @@ class CotManager(object):
         self.current_index = 0
         self._stanzas = []
         self.expected_stanzas = []
+        self.exhausted = False
+        self.done_validating = False
 
     @property
     def stanzas(self):
         for test_name, stanza in self._stanzas:
-            stanza_id = stanza.get_attribute_value('id')
-            self.series[stanza_id] = {'test': test_name, 'start': time.time(), 'end': None,
-                                      'matched': False, 'type': stanza.xml_name,
-                                      'ns': stanza.xml_ns}
             self.current_index += 1
             yield stanza
             
     @property
-    def exhausted(self):
-        return self.current_index == self.nb_stanzas
+    def completed(self):
+        return self.exhausted and self.done_validating
 
+    def is_expected(self, stanza):
+        return stanza.get_attribute_value('id') in self.series
+
+    def reviewed(self, stanza):
+        stanza_id = stanza.get_attribute_value('id')
+        return self.series[stanza_id]['reviewed']
+        
     def add_cot_script(self, cot_script):
         stanzas, expected_stanzas = CotScript.load(cot_script)
         self.nb_stanzas += len(stanzas)
         self._stanzas = itertools.chain(self._stanzas, stanzas)
-        self.expected_stanzas.extend(expected_stanzas)
 
-    def validate(self, jid, stanza):
+        for test_name, stanza in expected_stanzas:
+            stanza_id = stanza.get_attribute_value('id')
+            self.series[stanza_id] = {'test': test_name, 'matched': False, 'reviewed': False,
+                                      'type': stanza.xml_name, 'ns': stanza.xml_ns}
+            self.expected_stanzas.append(stanza)
+
+    def validate(self, stanza, filler_cb):
         matched = False
-        for expected_stanza in self.expected_stanzas:
-            from_jid = expected_stanza.get_attribute_value('from')
-            if from_jid == '${from-id}':
-                expected_stanza.set_attribute_value(u'from', unicode(jid))
-            
-            to_jid = expected_stanza.get_attribute_value('to')
-            if to_jid == '${from-id}':
-                expected_stanza.set_attribute_value(u'to', unicode(jid))
-            
+        for s in self.expected_stanzas:
+            expected_stanza = s.clone().xml_root
+
+            expected_stanza = filler_cb(expected_stanza)
             matched = self.match_expected_stanza(stanza, expected_stanza)
             if matched:
                 stanza_id = expected_stanza.get_attribute_value('id')
-                if stanza_id in self.series:
-                    self.series[stanza_id]['matched'] = True
-                    self.series[stanza_id]['end'] = time.time()
-                self.expected_stanzas.remove(expected_stanza)
+                self.series[stanza_id]['matched'] = True
+                self.expected_stanzas.remove(s)
                 break
 
     def match_expected_stanza(self, stanza, exp_stanza):
@@ -107,23 +110,27 @@ class CotManager(object):
         stanza.xml_parent = None
         doc.xml_children = []
         return True
+
+    def ack_stanza(self, stanza, filler_cb):
+        stanza_id = stanza.get_attribute_value('id')
+        self.series[stanza_id]['reviewed'] = True
+        self.validate(stanza, filler_cb)
         
-    def ack_stanza(self, from_jid, stanza):
-        self.validate(from_jid, stanza)
+        if self.exhausted:
+            self.done_validating = True
 
     def report(self):
         print
         for serie in self.series.values():
-            if serie['matched'] and serie['end']:
-                print "%s: succeeded in %.3fs" % (serie['test'], (serie['end'] - serie['start']))
-            elif serie['end']:
-                print "%s: failed in %.3fs" % (serie['test'], (serie['end'] - serie['start']))
+            if serie['matched']:
+                print "%s: succeeded" % (serie['test'],)
             else:
                 print "%s: failed" % (serie['test'],)
 
-        print "Remaining expected stanzas that weren't used in matching:"
-        for stanza in self.expected_stanzas:
-            print stanza.xml(omit_declaration=True, indent=True)
+        if self.expected_stanzas:
+            print "Remaining expected stanzas that weren't used in matching:"
+            for stanza in self.expected_stanzas:
+                print stanza.xml(omit_declaration=True, indent=True)
                 
         print
 
@@ -177,7 +184,7 @@ class CotScript(object):
                     if mode == SEND_MODE:
                         stanzas.append((current_test_name, child))
                     elif mode == EXPECT_MODE:
-                        expected_stanzas.append(child)
+                        expected_stanzas.append((current_test_name, child))
 
                 buf = []
             else:

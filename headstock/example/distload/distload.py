@@ -58,16 +58,21 @@ class Config(object):
 
 class JobClient(object):
     def __init__(self, options, stdout_log=False, log_path=None):
-        from headstock.client import Client
-        self.client = Client(unicode(options.username), 
-                             unicode(options.password), 
-                             unicode(options.domain),
-                             unicode(options.resource),
-                             hostname=options.hostname, 
-                             port=int(options.port),
-                             usetls=options.tls, 
-                             log_file_path=log_path,
-                             log_to_console=stdout_log)
+        from bridge.common import XMPP_PUBSUB_NS, XMPP_PUBSUB_OWNER_NS
+        from headstock.protocol.core.stream import ClientStream
+        ClientStream.Outboxes["%s.pubsub" % XMPP_PUBSUB_NS] = "Pubsub"
+        ClientStream.Outboxes["%s.pubsub" % XMPP_PUBSUB_OWNER_NS] = "Pubsub"
+
+        from headstock.client import Client, RegisteringClient
+        self.client = RegisteringClient(username=unicode(options.username), 
+                                        password=unicode(options.password), 
+                                        domain=unicode(options.domain),
+                                        resource=unicode(options.resource),
+                                        hostname=options.hostname, 
+                                        port=int(options.port),
+                                        usetls=options.tls,
+                                        log_file_path=log_path,
+                                        log_to_console=stdout_log)
 
     def start(self):
         self.client.activate()
@@ -80,18 +85,8 @@ class JobClient(object):
         manager = CotManager()
         manager.add_cot_script(options.cot_file_path)
         
-        mapping = []
-        from bridge.common import XMPP_ROSTER_NS, XMPP_LAST_NS, XMPP_VERSION_NS
-        mapping.append(('query', XMPP_ROSTER_NS))
-        mapping.append(('query', XMPP_LAST_NS))
-        mapping.append(('query', XMPP_VERSION_NS))
-        
         from headstock.client.cot import make_linkages
-        components, linkages = make_linkages(mapping, manager)
-        self.client.registerComponents(components, linkages)
-
-        from headstock.lib.monitor import make_linkages
-        components, linkages = make_linkages(2.0)
+        components, linkages = make_linkages(manager)
         self.client.registerComponents(components, linkages)
 
     def report(self):
@@ -119,6 +114,7 @@ class LoadRunnerProcess(Process):
             log_path = None
             if j.log_dir:
                 log_path = '%s.log' % os.path.join(j.log_dir, o.username)
+                
             c = JobClient(o, j.log_to_stdout, log_path)
             c.add_extensions(j)
             self.clients.append(c)
@@ -171,7 +167,7 @@ class XMPPDistributedLoadManager(object):
             job = self.config.get_section_by_suffix('job', str(i))
             if job:
                 self.log("Adding job: %s" % job.name)
-                LoadRunnerProcess(job).run() #start()
+                LoadRunnerProcess(job).start()
 
         end_time = datetime.utcnow()
         self.log("Finishing run: %s" % end_time.isoformat())

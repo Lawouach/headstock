@@ -27,7 +27,7 @@ from bridge.common import XMPP_CLIENT_NS, XMPP_ROSTER_NS, \
     XMPP_DISCO_ITEMS_NS, XMPP_PUBSUB_NS, XMPP_PUBSUB_EVENT_NS,\
     XMPP_PUBSUB_OWNER_NS, XMPP_VERSION_NS
 
-_all__ = ['Client']
+_all__ = ['Client', 'RegisteringClient']
   
 class Client(component):
     Inboxes = {"inbox"      : "",
@@ -37,6 +37,7 @@ class Client(component):
                "unhandled"  : "",
                "error"      : "",
                "ping"       : "",
+               "registered" : "",
                "control"    : "Shutdown the client stream"}
     
     Outboxes = {"outbox"  : "",
@@ -70,6 +71,7 @@ class Client(component):
             self.password_lookup = password_lookup
         self.graph = None
 
+        ClientStream.Outboxes["%s.iq" % XMPP_CLIENT_NS] = "Base stanza"
         ClientStream.Outboxes["%s.query" % XMPP_IBR_NS] = "Registration"
         ClientStream.Outboxes["%s.query" % XMPP_LAST_NS] = "Activity"
         ClientStream.Outboxes["%s.query" % XMPP_VERSION_NS] = "Version software"
@@ -202,6 +204,7 @@ class Client(component):
                     yield 1
                     self.running = False
 
+                    
             if self.dataReady("unhandled"):
                 stanza = self.recv('unhandled')
                 self.unhandled_stanza(stanza)
@@ -228,6 +231,16 @@ class Client(component):
                 self.recv('bound')
                 self.active()
 
+            if self.dataReady("registered"):
+                self.recv('registered')
+                
+                self.send(producerFinished(), "_stopmonitor")
+                self.close()
+                yield 1
+                self.send(producerFinished(), "signal")
+                yield 1
+                self.running = False
+
             if self.dataReady("error"):
                 e = self.recv('error')
                 self.send(('INCOMING', e), "log")
@@ -249,8 +262,50 @@ class Client(component):
             self.graph.unlink(thelinkage=linkage)
 
         yield shutdownMicroprocess(self, self.children)
-        
 
+class RegisteringClient(component):
+    Inboxes = {"inbox"      : "",
+               "control"    : ""}
+    
+    Outboxes = {"outbox"  : "",
+                "signal"  : "",}
+
+    def __init__(self, **kwargs):
+        super(RegisteringClient, self).__init__()
+        self.sequence = [Client(register=True, unregister=False, **kwargs),
+                         Client(register=False, unregister=True, **kwargs)]
+
+        from headstock.client.registration import make_linkages
+        components, linkages = make_linkages()
+        self.sequence[0].registerComponents(components, linkages)
+        
+        components, linkages = make_linkages()
+        self.sequence[1].registerComponents(components, linkages)
+
+    def registerComponents(self, components, linkages):
+        self.sequence[1].registerComponents(components, linkages)
+
+    def get_component(self, key):
+        return self.sequence[1].get_component(key)
+        
+    def main(self):
+        for comp in self.sequence:
+            self.addChildren(comp)
+            comp.activate()
+            
+            while not self.childrenDone():
+                self.pause()
+                yield 1
+
+        self.send(producerFinished(self), "signal")
+
+    def childrenDone(self):
+        for child in self.childComponents():
+            if child._isStopped():
+                self.removeChild(child) 
+
+        return 0 == len(self.childComponents())
+    
 if __name__ == '__main__':
     
     def parse_commandline():

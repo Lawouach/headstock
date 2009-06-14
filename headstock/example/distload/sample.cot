@@ -1,9 +1,9 @@
-send(Ask Roster): {
+send(Ask roster): {
 <iq type="get" id="roster_1" >
   <query xmlns="jabber:iq:roster"/>
 </iq>
 }
-expect(Ask Roster): {
+expect: {
 <iq type="result" id="roster_1" >
   <query xmlns="jabber:iq:roster"/>
 </iq>
@@ -16,7 +16,6 @@ send(Add contact): {
 </iq>
 }
 expect: {
-<iq type="result" id="roster_2"/>
 <iq type="set" id="push">
   <query xmlns="jabber:iq:roster">
     <item jid="santa.claus@north.pole" name="claus" subscription="none"/>
@@ -31,17 +30,61 @@ send(Ask software version): {
 expect: {
 <iq xmlns="jabber:client" to="${from-id}" from="santa.claus@north.pole" id="version_1" type="error">
     <query xmlns="jabber:iq:version" />
-    <error code="404" type="cancel"><remote-server-not-found xmlns="urn:ietf:params:xml:ns:xmpp-stanzas" /></error>
+    <error code="404" type="cancel">
+      <remote-server-not-found xmlns="urn:ietf:params:xml:ns:xmpp-stanzas" />
+    </error>
 </iq>
 }
 send(Ask last activity): {
-<iq from="${from-id}" id="last1" to="${to-id}" type="get">
+<iq from="${from-id}" id="last1" to="santa.claus@north.pole" type="get">
   <query xmlns="jabber:iq:last" />
 </iq>
 }
 expect: {
 <iq xmlns="jabber:client" to="${from-id}" from="santa.claus@north.pole" id="last1" type="error">
     <query xmlns="jabber:iq:last" />
-    <error code="404" type="cancel"><remote-server-not-found xmlns="urn:ietf:params:xml:ns:xmpp-stanzas" /></error>
+    <error code="404" type="cancel">
+      <remote-server-not-found xmlns="urn:ietf:params:xml:ns:xmpp-stanzas" />
+    </error>
+</iq>
+}
+send(Create PubSub node): {
+<iq type="set" from="${from-id}" to="pubsub.localhost" id="create_1">
+    <pubsub xmlns="http://jabber.org/protocol/pubsub">
+      <create node="home/localhost/${node-id}"/>
+      <configure/>
+    </pubsub>
+</iq>
+}
+expect: {
+<iq type="result" from="pubsub.localhost" to="${from-id}" id="create_1">
+    <pubsub xmlns="http://jabber.org/protocol/pubsub">
+      <create node="home/localhost/${node-id}" />
+    </pubsub>
+</iq>
+}
+send(Delete PubSub node): {
+<iq type="set" from="${from-id}" to="pubsub.localhost" id="delete_1">
+    <pubsub xmlns="http://jabber.org/protocol/pubsub#owner">
+      <delete node="home/localhost/${node-id}"/>
+    </pubsub>
+</iq>
+}
+expect: {
+<iq type="result" from="pubsub.localhost" to="${from-id}" id="delete_1" />
+}
+send(Create PubSub node after delation): {
+<iq type="set" from="${from-id}" to="pubsub.localhost" id="create_2">
+    <pubsub xmlns="http://jabber.org/protocol/pubsub">
+      <create node="home/localhost/${node-id}"/>
+      <configure/>
+    </pubsub>
+</iq>
+}
+expect: {
+<iq type="result" from="pubsub.localhost" to="${from-id}" id="create_2">
+    <pubsub xmlns="http://jabber.org/protocol/pubsub">
+      <create node="home/localhost/${node-id}" />
+    </pubsub>
 </iq>
 }
