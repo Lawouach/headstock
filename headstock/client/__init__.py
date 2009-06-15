@@ -92,7 +92,7 @@ class Client(component):
         self.stream = ClientStream(self.jid, self.password_lookup, use_tls=self.usetls)
 
         self.base_graph = dict(client = self,
-                               logger = Logger(path=log_file_path, stdout=log_to_console),
+                               logger = Logger(path=log_file_path, stdout=log_to_console, name=self.username),
                                tcp = TCPClient(self.hostname, self.port),
                                xmlparser = XMLIncrParser(),
                                xmpp = self.stream,
@@ -268,8 +268,16 @@ class RegisteringClient(component):
 
     def __init__(self, **kwargs):
         super(RegisteringClient, self).__init__()
+        if 'register' in kwargs:
+            del kwargs['register']
+
+        unregister = True
+        if 'unregister' in kwargs:
+            unregister = kwargs['unregister']
+            del kwargs['unregister']
+
         self.sequence = [Client(register=True, unregister=False, **kwargs),
-                         Client(register=False, unregister=True, **kwargs)]
+                         Client(register=False, unregister=unregister, **kwargs)]
 
         from headstock.client.registration import make_linkages
         components, linkages = make_linkages()

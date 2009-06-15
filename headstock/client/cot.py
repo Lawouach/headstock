@@ -25,7 +25,7 @@ class CotComponent(component):
                 "_monitor" : "",
                 "log"      : ""}
 
-    def __init__(self, keep_alive=True, timeout=10):
+    def __init__(self, keep_alive=False, timeout=0):
         super(CotComponent, self).__init__()
         self.from_jid = None
         self.manager = None
@@ -98,11 +98,11 @@ class CotComponent(component):
                 if self.manager.is_expected(iq):
                     self.send(('INCOMING', iq), 'log')
                     self.ack_stanza(iq)
-                    self.send_stanza()
+                    self.send_stanza()    
                     
                     if not self.keep_alive and self.manager.completed:
                         self.completed()
-                    
+                        
             if self.dataReady("healthcheck"):
                 self.recv("healthcheck")
                 if self.manager.completed:

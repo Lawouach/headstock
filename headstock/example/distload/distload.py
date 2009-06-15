@@ -2,10 +2,11 @@
 import ConfigParser
 from collections import namedtuple
 from datetime import datetime
+import time
 import logging
 from logging import handlers
 import os, os.path
-from multiprocessing import Process, cpu_count
+from multiprocessing import Process, cpu_count, active_children
 
 class Config(object):
     @staticmethod
@@ -58,21 +59,30 @@ class Config(object):
 
 class JobClient(object):
     def __init__(self, options, stdout_log=False, log_path=None):
-        from bridge.common import XMPP_PUBSUB_NS, XMPP_PUBSUB_OWNER_NS
-        from headstock.protocol.core.stream import ClientStream
-        ClientStream.Outboxes["%s.pubsub" % XMPP_PUBSUB_NS] = "Pubsub"
-        ClientStream.Outboxes["%s.pubsub" % XMPP_PUBSUB_OWNER_NS] = "Pubsub"
-
         from headstock.client import Client, RegisteringClient
-        self.client = RegisteringClient(username=unicode(options.username), 
-                                        password=unicode(options.password), 
-                                        domain=unicode(options.domain),
-                                        resource=unicode(options.resource),
-                                        hostname=options.hostname, 
-                                        port=int(options.port),
-                                        usetls=options.tls,
-                                        log_file_path=log_path,
-                                        log_to_console=stdout_log)
+        if not options.register:
+            self.client = Client(username=unicode(options.username), 
+                                 password=unicode(options.password), 
+                                 domain=unicode(options.domain),
+                                 resource=unicode(options.resource),
+                                 hostname=options.hostname, 
+                                 port=int(options.port),
+                                 usetls=options.tls,
+                                 register=False,
+                                 unregister=options.unregister,
+                                 log_file_path=log_path,
+                                 log_to_console=stdout_log)
+        else:
+            self.client = RegisteringClient(username=unicode(options.username), 
+                                            password=unicode(options.password), 
+                                            domain=unicode(options.domain),
+                                            resource=unicode(options.resource),
+                                            hostname=options.hostname, 
+                                            port=int(options.port),
+                                            usetls=options.tls,
+                                            unregister=options.unregister,
+                                            log_file_path=log_path,
+                                            log_to_console=stdout_log)
 
     def start(self):
         self.client.activate()
@@ -93,7 +103,7 @@ class JobClient(object):
         cot_component = self.client.get_component('cothandler')
         cot_component.manager.report()
 
-XMPPClientOption = namedtuple("XMPPClientOption", "username password domain resource hostname port tls")
+XMPPClientOption = namedtuple("XMPPClientOption", "username password domain resource hostname port tls register unregister")
 
 class LoadRunnerProcess(Process):
     def __init__(self, job):
@@ -110,7 +120,8 @@ class LoadRunnerProcess(Process):
             if j.random_resource:
                 resource = generate_unique()
             o = XMPPClientOption("%s%d" % (j.username_prefix, j.username_suffix_offset + i), 
-                                 j.password, j.domain, resource, j.hostname, j.port, j.tls)
+                                 j.password, j.domain, resource, j.hostname, j.port, j.tls, 
+                                 j.register, j.unregister)
             log_path = None
             if j.log_dir:
                 log_path = '%s.log' % os.path.join(j.log_dir, o.username)
@@ -162,12 +173,17 @@ class XMPPDistributedLoadManager(object):
         self.log("Starting run: %s" % start_time.isoformat())
         self.log("CPU count: %d" % cpu_count())
         self.log("Pool size: %d" % self.config.run.pool_size)
+        self.log("Number of jobs: %d" % self.config.run.jobs)
 
         for i in range(0, min(self.config.run.pool_size, self.config.run.jobs)):
             job = self.config.get_section_by_suffix('job', str(i))
             if job:
-                self.log("Adding job: %s" % job.name)
-                LoadRunnerProcess(job).start()
+                p = LoadRunnerProcess(job)
+                p.start()
+                self.log("Started job '%s' on PID: %d" % (job.name, p.pid))
+
+        while active_children():
+            time.sleep(0.05)
 
         end_time = datetime.utcnow()
         self.log("Finishing run: %s" % end_time.isoformat())

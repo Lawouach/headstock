@@ -52,7 +52,14 @@ class CotManager(object):
             
     @property
     def completed(self):
-        return self.exhausted and self.done_validating
+        if not self.exhausted:
+            return False
+
+        for stanza_id in self.series:
+            if not self.series[stanza_id]['reviewed']:
+                return False
+
+        return True
 
     def is_expected(self, stanza):
         return stanza.get_attribute_value('id') in self.series
@@ -115,9 +122,6 @@ class CotManager(object):
         stanza_id = stanza.get_attribute_value('id')
         self.series[stanza_id]['reviewed'] = True
         self.validate(stanza, filler_cb)
-        
-        if self.exhausted:
-            self.done_validating = True
 
     def report(self):
         print
