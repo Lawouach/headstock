@@ -129,6 +129,7 @@ class ClientStream(component):
                 "starttls": "",
                 "jid"    : "",
                 "features": "",
+                "track"   : "Tracks element sent",
                 "bound"  : "indicates the client has been successfully bound to an XMPP server",
                 "terminated": "Indicates the stream has been terminated by the peer",
                 "unhandled"    : "Contains any bridge.Element which namespace was not handled by a dedicated component",
@@ -157,12 +158,16 @@ class ClientStream(component):
     def log(self, data, type="INCOMING"):
         """Drops data into the log box. """
         self.send((type, data), "log")
+
+    def track(self, element):
+        self.send(element, 'track')
         
     def propagate(self, element=None, raw=None):
         """Handy method to put either a bridge.Element instance or a raw byte string
         into the outbox box. If element is passed it will set ``raw`` to a serialized
         representation of the XML fragment it represents, as a byte string."""
         if element:
+            self.track(element)
             raw = element.xml(omit_declaration=True, indent=False)
 
         if raw:
@@ -331,6 +336,7 @@ class ClientStream(component):
                 # the outbox in a serialized format (a byte string).
                 data = self.recv("forward")
                 self.log(data, "OUTGOING")
+                self.track(data)
                 self.send(data.xml(omit_declaration=True, indent=False), "outbox")
 
             if self.dataReady("inbox"):

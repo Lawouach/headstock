@@ -15,7 +15,7 @@ class XMLIncrParser(component):
                "control" : "Stop the parsing.",
                "reset": "Reset the parser state"}
     Outboxes = {"outbox" : "When an element parsing is completed, it is placed there as a bridge.Element instance.",
-                "signal" : "Shutdown signal",}
+                "signal" : "Shutdown signal"}
    
     def __init__(self):
         super(XMLIncrParser, self).__init__()

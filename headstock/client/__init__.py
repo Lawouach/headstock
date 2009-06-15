@@ -9,6 +9,7 @@ from Kamaelia.Util.Backplane import PublishTo, SubscribeTo
 from Kamaelia.Util.Fanout import Fanout
 from Kamaelia.Util.OneShot import OneShot
 from Kamaelia.Util.Console import ConsoleReader
+from Kamaelia.Util.NullSink import nullSinkComponent
 from Kamaelia.Internet.TCPClient import TCPClient
   
 from headstock.protocol.core.stream import ClientStream, StreamError, SaslError
@@ -98,6 +99,7 @@ class Client(component):
                                xmpp = self.stream,
                                streamerr = StreamError(),
                                saslerr = SaslError(),
+                               tracker = nullSinkComponent(),
                                jidsplit = Fanout(['client', 'contactjid', 'presencejid', 'chatjid',
                                                   'pubsubnodejid', 'discojid', 'registerjid', 'cotjid']),
                                boundsplit = Fanout(['client', 'chatbound', 'contactbound',
@@ -113,6 +115,7 @@ class Client(component):
                                            ("xmlparser", "outbox") : ("xmpp" , "inbox"),
                                            ("xmpp", "outbox") : ("tcp" , "inbox"),
                                            ("xmpp", "reset"): ("xmlparser", "reset"),
+                                           ("xmpp", "track"): ("tracker", "inbox"),
                                            ("client", "log"): ("logger", "inbox"),
                                            ("xmpp", "log"): ("logger", "inbox"),
                                            ("xmpp", "jid"): ("jidsplit", "inbox"),

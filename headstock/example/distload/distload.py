@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import sys
 import ConfigParser
 from collections import namedtuple
 from datetime import datetime
@@ -99,9 +100,23 @@ class JobClient(object):
         components, linkages = make_linkages(manager)
         self.client.registerComponents(components, linkages)
 
+        from headstock.lib.tracker import make_linkages
+        components, linkages = make_linkages()
+        self.client.registerComponents(components, linkages)
+
     def report(self):
         cot_component = self.client.get_component('cothandler')
         cot_component.manager.report()
+
+    def stats(self):
+        from headstock.lib.export.fusionchart import V3LineExporter
+        tracker_component = self.client.get_component('trackerhandler')
+        #V3LineExporter.write(V3LineExporter.export(tracker.component.started,
+        #                                           tracker_component.terminated,
+        #                                           tracker_component.data), sys.stdout)
+        
+        import pickle
+        pickle.dump(tracker_component.data, file('stats.dump', 'wb'))
 
 XMPPClientOption = namedtuple("XMPPClientOption", "username password domain resource hostname port tls register unregister")
 
@@ -137,6 +152,7 @@ class LoadRunnerProcess(Process):
 
         for c in self.clients:
             c.report()
+            c.stats()
 
 class XMPPDistributedLoadManager(object):
     def __init__(self, config):
