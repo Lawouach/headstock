@@ -16,7 +16,6 @@ __all__ = ['CotComponent', 'make_linkages']
 class CotComponent(component):    
     Inboxes = {"inbox"   : "",
                "control" : "",
-               "ping"    : "",
                "healthcheck": "",
                "jid"     : "",
                "bound"   : ""}
@@ -97,21 +96,15 @@ class CotComponent(component):
                         self.start_job()
 
                 if self.manager.is_expected(iq):
-                    if not self.manager.reviewed(iq):
-                        self.send(('INCOMING', iq), 'log')
-                        try:
-                            self.ack_stanza(iq)
-                        except Exception, ex:
-                            print ex
-                            raise
-                        self.send_stanza()
+                    self.send(('INCOMING', iq), 'log')
+                    self.ack_stanza(iq)
+                    self.send_stanza()
                     
                     if not self.keep_alive and self.manager.completed:
                         self.completed()
                     
             if self.dataReady("healthcheck"):
                 self.recv("healthcheck")
-                print self.manager.completed
                 if self.manager.completed:
                     self.send(-1, '_monitor')
                     self.removeChild(self.monitor)
@@ -119,10 +112,6 @@ class CotComponent(component):
                 else:
                     self.send(self.timeout, '_monitor')
                         
-            if self.dataReady("ping"):
-                self.recv('ping')
-                self.pinged()
-                    
             if self.running and not self.anyReady():
                 self.pause()
   
@@ -144,9 +133,6 @@ class CotComponent(component):
 
     def completed(self):
         self.running = False
-
-    def pinged(self):
-        pass
 
     def roster_updated(self, roster):
         self.roster = roster
@@ -228,16 +214,11 @@ def make_linkages(manager, cot_handler_cls=CotComponent):
     linkages = {("cothandler", "log"): ('logger', "inbox"),
                 ("cothandler", "outbox"): ("xmpp", "forward"),
                 ("cothandler", "signal"): ("client", "control"),
-                ("client", "pong"): ("cothandler", "ping"),
                 ('jidsplit', 'cotjid'): ('cothandler', 'jid'),
                 ('boundsplit', 'cotbound'): ('cothandler', 'bound')}
     mapping = []
     mapping.append(('iq', XMPP_CLIENT_NS))
     mapping.append(('query', XMPP_ROSTER_NS))
-    mapping.append(('query', XMPP_LAST_NS))
-    mapping.append(('query', XMPP_VERSION_NS))
-    mapping.append(('pubsub', XMPP_PUBSUB_NS))
-    mapping.append(('pubsub', XMPP_PUBSUB_OWNER_NS))
 
     for name, ns in mapping:
         linkages[("xmpp", "%s.%s" % (ns, name))] = ("cothandler", "inbox")

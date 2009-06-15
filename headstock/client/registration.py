@@ -89,7 +89,7 @@ def make_linkages():
                 ("registerdisp", "xmpp.result"): ("registerhandler", "inbox"),
                 ("registerhandler", "outbox"): ("registerdisp", "forward"),
                 ("registerhandler", "signal"): ("client", "control"),
-                ("registerhandler", "success"): ("client", "registered"),
+                ("registerhandler", "success"): ("client", "registration"),
                 ("client", "askregistration"): ("registerhandler", "register"),
                 ("client", "askunregistration"): ("registerhandler", "unregister"),
                 ('jidsplit', 'registerjid'): ('registerhandler', 'jid'),

@@ -36,8 +36,7 @@ class Client(component):
                "streamfeat" : "",
                "unhandled"  : "",
                "error"      : "",
-               "ping"       : "",
-               "registered" : "",
+               "registration" : "",
                "control"    : "Shutdown the client stream"}
     
     Outboxes = {"outbox"  : "",
@@ -46,7 +45,6 @@ class Client(component):
                 "doauth"  : "",
                 "signal"  : "Shutdown signal",
                 "pong"    : "",
-                "_stopmonitor": "",
                 "askregistration" : "",
                 "askunregistration" : ""}
 
@@ -158,15 +156,12 @@ class Client(component):
     def get_component(self, key):
         return self.base_graph.get(key, None)
 
-    def close(self):
-        if self.unregister:
-            self.send(None, 'askunregistration')
-        else:            
-            stanza = Presence.to_element(Presence(self.jid, type=u'unavailable')).xml(omit_declaration=True)
-            self.send(stanza, 'outbox')
-            self.send('OUTGOING : %s' % stanza, 'log')
-            self.send('OUTGOING : </stream:stream>', 'log')
-            self.send('</stream:stream>', 'outbox') 
+    def close(self):       
+        stanza = Presence.to_element(Presence(self.jid, type=u'unavailable')).xml(omit_declaration=True)
+        self.send(stanza, 'outbox')
+        self.send('OUTGOING : %s' % stanza, 'log')
+        self.send('OUTGOING : </stream:stream>', 'log')
+        self.send('</stream:stream>', 'outbox') 
 
     def shutdown(self):
         o = OneShot(msg=shutdownMicroprocess())
@@ -197,21 +192,20 @@ class Client(component):
                 
                 if isinstance(mes, shutdownMicroprocess) or \
                        isinstance(mes, producerFinished):
-                    self.send(producerFinished(), "_stopmonitor")
-                    self.close()
-                    yield 1
-                    self.send(producerFinished(), "signal")
-                    yield 1
-                    self.running = False
+                    if self.unregister:
+                        # The actual client shutdown will be performed
+                        # once we've received the unregistration ack
+                        self.send(None, 'askunregistration')
+                    else:
+                        self.close()
+                        yield 1
+                        self.send(producerFinished(), "signal")
+                        yield 1
+                        self.running = False
 
-                    
             if self.dataReady("unhandled"):
                 stanza = self.recv('unhandled')
                 self.unhandled_stanza(stanza)
-
-            if self.dataReady("ping"):
-                self.send(self.recv('ping'), 'pong')
-                yield 1
 
             if self.dataReady("inbox"):
                 self.recv('inbox')
@@ -231,13 +225,12 @@ class Client(component):
                 self.recv('bound')
                 self.active()
 
-            if self.dataReady("registered"):
-                self.recv('registered')
+            if self.dataReady("registration"):
+                self.recv('registration')
                 
-                self.send(producerFinished(), "_stopmonitor")
                 self.close()
                 yield 1
-                self.send(producerFinished(), "signal")
+                self.send(producerFinished(self), "signal")
                 yield 1
                 self.running = False
 
@@ -252,16 +245,19 @@ class Client(component):
                 self.pause()
             
             yield 1
-
-        if self.unregister:
-            self.send(None, 'askunregistration')
-                    
+                   
         for child in self.graph.children:
             linkage = self.graph.link((self.graph, "signal"), (child, "control"))
             self.graph.send(shutdownMicroprocess(), 'signal')
             self.graph.unlink(thelinkage=linkage)
 
         yield shutdownMicroprocess(self, self.children)
+
+        for child in self.graph.children:
+            self.removeChild(child)
+
+        for child in self.children:
+            self.removeChild(child)
 
 class RegisteringClient(component):
     Inboxes = {"inbox"      : "",
