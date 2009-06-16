@@ -11,7 +11,7 @@ __all__ = ['MessagePingPong', 'RosterHandler']
 class MessagePingPong(IMComponent):
     def __init__(self):
         super(MessagePingPong, self).__init__()
-        self.message_id = None
+        self.ids = []
         self.watchdog = None
         self.roster = None
 
@@ -27,12 +27,12 @@ class MessagePingPong(IMComponent):
         m = Message(unicode(self.from_jid), unicode(jid), 
                     type=u'chat', stanza_id=generate_unique())
         m.bodies.append(Body(unicode(text)))
-        self.message_id = m.stanza_id
+        self.ids.append(m.stanza_id)
         self.start = time.time()
         self.send(m, "outbox")
 
     def received_message(self, message):
-        if self.message_id != message.stanza_id:
+        if message.stanza_id not in self.ids:
             message.swap_jids()
             message.bodies = [Body(u'pong')]
             self.send(message, 'outbox')
@@ -43,7 +43,7 @@ class MessagePingPong(IMComponent):
                 else:
                     self.watchdog.store(time.time() - self.start)
                     self.watchdog.succeeded()
-            self.message_id = None
+            self.ids.remove(message.stanza_id)
 
 class RosterHandler(RosterComponent):
     def __init__(self):

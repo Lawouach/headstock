@@ -22,7 +22,7 @@ class ThreadedMonitor(threadedcomponent):
                         isinstance(mes, producerFinished):
                     self.send(producerFinished(), "signal")
                     break
-                
+
             if self.interval > 0:
                 time.sleep(self.interval)
                 self.timeout()
@@ -40,7 +40,7 @@ class ThreadedMonitor(threadedcomponent):
     def timeout(self):
         pass
 
-    def reload(self, freq): 
+    def reset(self, freq): 
         o = OneShot(msg=freq)
         o.link((o, 'outbox'), (self, 'inbox'))
         o.activate()

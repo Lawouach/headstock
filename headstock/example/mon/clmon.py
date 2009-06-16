@@ -103,7 +103,6 @@ class Config(object):
 class XMPPWatchdogClient(object):
     def __init__(self, options):
         self.conn = None
-        self.succeeded = False
         self.running = False
 
         self.options = options
@@ -128,7 +127,8 @@ class XMPPWatchdogClient(object):
                               usetls=False,
                               register=False,
                               unregister=False,
-                              log_file_path=os.path.join(options.log_dir, 'xmpp.%s.log' % options.username),
+                              log_file_path=os.path.join(options.log_dir,
+                                                         'xmpp.%s.log' % options.username),
                               log_to_console=options.log_to_stdout)
         self.add_extensions()
 
@@ -182,8 +182,8 @@ class WatchdogPlugin(plugins.SimplePlugin):
     def __init__(self, bus, options):
         self.bus = bus
         self.options = options
-        self.client = XMPPWatchdogClient(options)
-
+        self.client = None
+        
     def start(self):
         self.bus.log("Starting Watchdog client")
 
@@ -193,30 +193,39 @@ class WatchdogPlugin(plugins.SimplePlugin):
         from headstock.lib.monitor import ThreadedMonitor
         class _ThreadedMonitor(ThreadedMonitor):
             def __init__(self, watchdog, freq):
-                super(ThreadedMonitor, self).__init__(freq)
+                super(_ThreadedMonitor, self).__init__(freq)
                 self.watchdog = watchdog
 
             def timeout(self):
-                self.watchdog.check()
-                self.reload(self.interval)
+                if self.watchdog.options.type == 'ping':
+                    self.watchdog.check()
+                self.watchdog.restart_client()
+                self.reset(self.interval)
 
             def terminate(self):
-                self.reload(0)
+                self.reset(0)
 
-        self.monitor = _ThreadedMonitor(self, 30.0)
+        self.monitor = _ThreadedMonitor(self, self.options.monitor_timeout)
         self.monitor.activate()
 
+        self.client = XMPPWatchdogClient(self.options)
         self.client.start()
 
     def stop(self):
         self.bus.log("Stopping Watchdog client")
         self.monitor.terminate()
-        self.client.stop()
+        if self.client:
+            self.client.stop()
+            self.client = None
 
     def check(self):
-        if self.client.running:
+        if self.client and self.client.running:
+            self.bus.log("Watchdog client failed")
             self.client.failed()
-            self.client.stop()
+
+    def restart_client(self):
+        self.bus.log("Restarting Watchdog client")
+        self.client.stop()
         self.client = XMPPWatchdogClient(self.options)
         self.client.start()
 
@@ -277,10 +286,6 @@ class WatchdogListener(threading.Thread):
         for pid, conn in self.connections:
             if conn:
                 conn.close()
-        # Workaround:
-        # There seems to be a bug in teh Listener 
-        # which doesn't unblock on accept when it is closed
-        # We connect and disconnect so that we escape the accept() call
         c = Client(('localhost', 12001), authkey='supervisor')
         c.send(str(os.getcwd()))
         c.close()
