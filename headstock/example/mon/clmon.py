@@ -5,13 +5,16 @@ import time
 import logging
 from logging import handlers
 import threading
+import signal
 from collections import namedtuple
 from multiprocessing import Process, active_children
 from multiprocessing.connection import Listener, Client
 
+from memcache import Client as MemcachedClient
 from cherrypy.process import plugins
 
-import signal
+import clext
+
 try:
     from os import kill
     from signal import SIGTERM
@@ -100,15 +103,22 @@ class Config(object):
 class XMPPWatchdogClient(object):
     def __init__(self, options):
         self.conn = None
+        self.succeeded = False
+        self.running = False
 
-        from Axon.Scheduler import scheduler 
-        scheduler.immortalise()
+        self.options = options
+        self.mc = None
+        if self.options.memcached:
+            self.mc = MemcachedClient([self.options.memcached])
+        self.init_client()
 
+    def init_client(self):
         from headstock.client import Client
         class _Client(Client):
             def terminated(self):
-                scheduler.run.stop()
+                pass #scheduler.run.stop()
 
+        options = self.options
         self.client = _Client(username=unicode(options.username),
                               password=unicode(options.password),
                               domain=unicode(options.domain),
@@ -123,12 +133,14 @@ class XMPPWatchdogClient(object):
         self.add_extensions()
 
     def start(self):
+        self.running = True
         self.conn = Client(('localhost', 12001), authkey='supervisor')
         self.conn.send(str(os.getpid()))
         self.client.activate()
         
     def stop(self):
         self.client.shutdown()
+        self.running = False
         if self.conn:
             self.conn.close()
             self.conn = None
@@ -139,25 +151,74 @@ class XMPPWatchdogClient(object):
         self.client.registerComponents(components, linkages)
 
         from headstock.client.roster import make_linkages
-        components, linkages = make_linkages()
+        components, linkages = make_linkages(roster_handler_cls=clext.RosterHandler)
         self.client.registerComponents(components, linkages)
 
         from headstock.client.im import make_linkages
-        components, linkages = make_linkages()
+        components, linkages = make_linkages(im_handler_cls=clext.MessagePingPong)
         self.client.registerComponents(components, linkages)
-    
+
+        im_component = self.client.get_component('msghandler')
+        im_component.watchdog = self
+
+        roster_handler = self.client.get_component('rosterhandler')
+        roster_handler.watchdog = self
+
+        if self.options.type == 'ping':
+            roster_handler.handlers.append(im_component)
+
+    def store(self, value):
+        if self.mc:
+            self.mc.set(str(self.options.memcached_key), str(value))
+
+    def failed(self):
+        if self.mc:
+            self.mc.set(str(self.options.memcached_key), 100000)
+
+    def succeeded(self):
+        self.stop()
+
 class WatchdogPlugin(plugins.SimplePlugin):
     def __init__(self, bus, options):
         self.bus = bus
+        self.options = options
         self.client = XMPPWatchdogClient(options)
 
     def start(self):
         self.bus.log("Starting Watchdog client")
+
+        from Axon.Scheduler import scheduler 
+        scheduler.immortalise()
+
+        from headstock.lib.monitor import ThreadedMonitor
+        class _ThreadedMonitor(ThreadedMonitor):
+            def __init__(self, watchdog, freq):
+                super(ThreadedMonitor, self).__init__(freq)
+                self.watchdog = watchdog
+
+            def timeout(self):
+                self.watchdog.check()
+                self.reload(self.interval)
+
+            def terminate(self):
+                self.reload(0)
+
+        self.monitor = _ThreadedMonitor(self, 30.0)
+        self.monitor.activate()
+
         self.client.start()
 
     def stop(self):
         self.bus.log("Stopping Watchdog client")
+        self.monitor.terminate()
         self.client.stop()
+
+    def check(self):
+        if self.client.running:
+            self.client.failed()
+            self.client.stop()
+        self.client = XMPPWatchdogClient(self.options)
+        self.client.start()
 
 class Watchdog(Process):
     def __init__(self, options):
@@ -209,7 +270,6 @@ class WatchdogListener(threading.Thread):
             pid = conn.recv()
             self.bus.log("Listening from process: %s" % pid)
             self.connections.append((pid, conn))
-            time.sleep(0.05)
 
     def stop(self):
         self.bus.log("Stopping listener")
@@ -248,6 +308,7 @@ class WatchdogSupervisorPlugin(plugins.SimplePlugin):
             w = Watchdog(options)
             self.watchdogs.append(w)
             w.start()
+            time.sleep(0.1)
 
     def stop(self):
         self.bus.log("Stopping Watchdogs")
