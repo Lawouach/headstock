@@ -174,6 +174,9 @@ class Client(component):
     def active(self):
         pass
 
+    def terminated(self):
+        pass
+
     def unhandled_stanza(self, stanza):
         #self.send(('UNHANDLED', stanza), 'log')
         pass
@@ -261,6 +264,8 @@ class Client(component):
 
         for child in self.children:
             self.removeChild(child)
+
+        self.terminated()
 
 class RegisteringClient(component):
     Inboxes = {"inbox"      : "",
