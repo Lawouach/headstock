@@ -4,6 +4,8 @@ import time
 from Axon.ThreadedComponent import threadedcomponent
 from Axon.Ipc import shutdownMicroprocess, producerFinished
 
+from Kamaelia.Util.OneShot import OneShot
+
 __all__ = ['ThreadedMonitor', 'make_linkages']
 
 class ThreadedMonitor(threadedcomponent):
@@ -23,6 +25,7 @@ class ThreadedMonitor(threadedcomponent):
                 
             if self.interval > 0:
                 time.sleep(self.interval)
+                self.timeout()
             else:
                 break
 
@@ -33,6 +36,14 @@ class ThreadedMonitor(threadedcomponent):
 
             if self.dataReady('inbox'):
                 self.interval = self.recv('inbox')
+
+    def timeout(self):
+        pass
+
+    def reload(self, freq): 
+        o = OneShot(msg=freq)
+        o.link((o, 'outbox'), (self, 'inbox'))
+        o.activate()
 
 def make_linkages(freq):
     linkages = {("monitor", "outbox"): ('client', "ping"),
