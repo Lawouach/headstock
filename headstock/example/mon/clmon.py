@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 import os, os.path
+import ConfigParser
 import time
 import logging
 from logging import handlers
 import threading
+from collections import namedtuple
 from multiprocessing import Process, active_children
 from multiprocessing.connection import Listener, Client
 
@@ -46,8 +48,57 @@ def close_logger(logger_name):
         handler.flush()
         handler.close()
 
+class Config(object):
+    @staticmethod
+    def from_ini(filepath, encoding='ISO-8859-1'):
+        config = ConfigParser.ConfigParser()
+        config.readfp(file(filepath, 'rb'))
+
+        conf = Config()
+        for section in config.sections():
+            section_prop = Config()
+            section_prop.keys = []
+            setattr(conf, section, section_prop)
+            for option in config.options(section):
+                section_prop.keys.append(option)
+                value = Config._convert_type(config.get(section, option).decode(encoding))
+                setattr(section_prop, option, value)
+
+        return conf
+
+    @staticmethod
+    def _convert_type(value):
+        """Do dummy conversion of the string 'True', 'False' and 'None'
+        into their object equivalent"""
+        if value == 'True':
+            return True
+        elif value == 'False':
+            return False
+        elif value == 'None':
+            return None
+        try:
+            return int(value)
+        except:
+            pass
+        return value
+
+    def get(self, section, option, default=None, raise_error=False):
+        if hasattr(self, section):
+            obj = getattr(self, section, None)
+            if obj and hasattr(obj, option):
+                return getattr(obj, option, default)
+
+        if raise_error:
+            raise AttributeError("%s %s" % (section, option))
+
+        return default
+
+    def get_section_by_suffix(self, prefix, suffix, default=None):
+        key = "%s%s" % (prefix, suffix)
+        return getattr(self, key, default)
+
 class XMPPWatchdogClient(object):
-    def __init__(self, base_log_path):
+    def __init__(self, options):
         self.conn = None
 
         from Axon.Scheduler import scheduler 
@@ -58,17 +109,17 @@ class XMPPWatchdogClient(object):
             def terminated(self):
                 scheduler.run.stop()
 
-        self.client = _Client(username=u'watchdog01', 
-                             password=u'test', 
-                             domain=u'localhost',
-                             resource=u'watchdog',
-                             hostname=u'localhost', 
-                             port=5222,
-                             usetls=False,
-                             register=False,
-                             unregister=False,
-                             log_file_path=os.path.join(base_log_path, 'xmpp.watchdog01.log'),
-                             log_to_console=True)
+        self.client = _Client(username=unicode(options.username),
+                              password=unicode(options.password),
+                              domain=unicode(options.domain),
+                              resource=unicode(options.resource),
+                              hostname=unicode(options.hostname),
+                              port=int(options.port),
+                              usetls=False,
+                              register=False,
+                              unregister=False,
+                              log_file_path=os.path.join(options.log_dir, 'xmpp.%s.log' % options.username),
+                              log_to_console=options.log_to_stdout)
         self.add_extensions()
 
     def start(self):
@@ -96,9 +147,9 @@ class XMPPWatchdogClient(object):
         self.client.registerComponents(components, linkages)
     
 class WatchdogPlugin(plugins.SimplePlugin):
-    def __init__(self, bus, log_path):
+    def __init__(self, bus, options):
         self.bus = bus
-        self.client = XMPPWatchdogClient(log_path)
+        self.client = XMPPWatchdogClient(options)
 
     def start(self):
         self.bus.log("Starting Watchdog client")
@@ -109,9 +160,10 @@ class WatchdogPlugin(plugins.SimplePlugin):
         self.client.stop()
 
 class Watchdog(Process):
-    def __init__(self):
+    def __init__(self, options):
         Process.__init__(self)
         self.logger = None
+        self.options = options
 
     def run(self):
         base_log_dir = os.path.join(os.getcwd(), 'logs')
@@ -126,7 +178,7 @@ class Watchdog(Process):
         from cherrypy.process import plugins  
         plugins.SignalHandler(bus).subscribe()
 
-        WatchdogPlugin(bus, base_log_dir).subscribe()
+        WatchdogPlugin(bus, self.options).subscribe()
         bus.start()
 
         try:
@@ -175,18 +227,29 @@ class WatchdogListener(threading.Thread):
         self.listener.close()
 
 class WatchdogSupervisorPlugin(plugins.SimplePlugin):
-    def __init__(self, bus):
+    def __init__(self, bus, config):
         self.bus = bus
+        self.config = config
         self.listener = WatchdogListener(bus)
-        self.watchdog = Watchdog()
+        self.watchdogs = []
 
     def start(self):
         self.bus.log("Starting Watchdog")
         self.listener.start()
-        self.watchdog.start()
+
+        from headstock.lib.utils import generate_unique
+        
+        for i in range(0, self.config.run.watchdogs):
+            options = self.config.get_section_by_suffix('watchdog', str(i))
+            resource = unicode(options.resource)
+            if options.random_resource:
+                resource = generate_unique()
+            w = Watchdog(options)
+            self.watchdogs.append(w)
+            w.start()
 
     def stop(self):
-        self.bus.log("Stopping Watchdog")
+        self.bus.log("Stopping Watchdogs")
         self._kill_watchdog()
         if self.listener:
             self.listener.stop()
@@ -194,15 +257,20 @@ class WatchdogSupervisorPlugin(plugins.SimplePlugin):
             self.listener = None
 
     def exit(self):
-        self.bus.log("Exiting Watchdog")
+        self.bus.log("Exiting Watchdogs")
         self.stop()
 
     def _kill_watchdog(self):
-        if self.watchdog.is_alive():
-            kill_proc(self.watchdog.pid)
-            self.watchdog.join()
+        for watchdog in self.watchdogs:
+            if watchdog.is_alive():
+                kill_proc(watchdog.pid)
+                watchdog.join()
+        self.watchdogs = []
 
 class WatchdogSupervisor(object):
+    def __init__(self, config_path):
+        self.config = Config.from_ini(config_path)
+
     def run(self):
         base_log_dir = os.path.join(os.getcwd(), 'logs')
         self.logger = open_logger(base_log_dir, "watchdog.supervisor.log", "watchdog.supervisor.logger")
@@ -215,7 +283,7 @@ class WatchdogSupervisor(object):
 
         plugins.SignalHandler(bus).subscribe()
 
-        WatchdogSupervisorPlugin(bus).subscribe()
+        WatchdogSupervisorPlugin(bus, self.config).subscribe()
         bus.start()
         bus.block()
         
@@ -226,6 +294,16 @@ class WatchdogSupervisor(object):
             self.logger.log(level, msg)
 
 if __name__ == '__main__':
-    w = WatchdogSupervisor()
+    def parse_commandline():
+        from optparse import OptionParser
+        parser = OptionParser()
+        parser.add_option("-c", "--config", dest="config",
+                          help="Configuration file")
+        (options, args) = parser.parse_args()
+
+        return options
+
+    options = parse_commandline()
+    w = WatchdogSupervisor(options.config)
     w.run()
     
