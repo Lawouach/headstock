@@ -209,6 +209,7 @@ class WatchdogListener(threading.Thread):
             pid = conn.recv()
             self.bus.log("Listening from process: %s" % pid)
             self.connections.append((pid, conn))
+            time.sleep(0.05)
 
     def stop(self):
         self.bus.log("Stopping listener")
