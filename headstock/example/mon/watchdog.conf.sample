@@ -15,7 +15,10 @@ log_dir: ./logs/
 type: ping
 memcached: 127.0.0.1:11211
 monitor_timeout: 30
+nodes: localhost
+markers: IM,PRESENCE
 im_marker: IM
+presence_marker: PRESENCE
 
 [watchdog1]
 username: watchdog02

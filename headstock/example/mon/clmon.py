@@ -103,6 +103,10 @@ class Config(object):
         key = "%s%s" % (prefix, suffix)
         return getattr(self, key, default)
 
+CONNECTING = 0
+CONNECTED = 1
+DISCONNECTED = 2
+
 PENDING = 0
 SUCCESS = 1
 FAILURE = 2
@@ -112,7 +116,8 @@ class XMPPWatchdogClient(object):
         self.conn = None
         self.running = False
 
-        self.status = PENDING
+        self.status = CONNECTING
+        self._statuses = {}
 
         self.options = options
         self.mc = MemcachedClient(memcache_addr)
@@ -121,8 +126,12 @@ class XMPPWatchdogClient(object):
     def init_client(self):
         from headstock.client import Client
         class _Client(Client):
+            def active(self):
+                self.watchdog.status = CONNECTED
+
             def terminated(self):
-                pass #scheduler.run.stop()
+                self.watchdog.status = DISCONNECTED
+                #scheduler.run.stop()
 
         options = self.options
         self.client = _Client(username=unicode(options.username),
@@ -137,6 +146,7 @@ class XMPPWatchdogClient(object):
                               log_file_path=os.path.join(options.log_dir,
                                                          'xmpp.%s.log' % options.username),
                               log_to_console=options.log_to_stdout)
+        self.client.watchdog = self
         self.add_extensions()
 
     def start(self):
@@ -154,7 +164,7 @@ class XMPPWatchdogClient(object):
 
     def add_extensions(self):
         from headstock.client.presence import make_linkages
-        components, linkages = make_linkages()
+        components, linkages = make_linkages(presence_handler_cls=clext.PresenceHandler)
         self.client.registerComponents(components, linkages)
 
         from headstock.client.roster import make_linkages
@@ -165,6 +175,9 @@ class XMPPWatchdogClient(object):
         components, linkages = make_linkages(im_handler_cls=clext.MessagePingPong)
         self.client.registerComponents(components, linkages)
 
+        presence_component = self.client.get_component('presencehandler')
+        presence_component.watchdog = self
+
         im_component = self.client.get_component('msghandler')
         im_component.watchdog = self
 
@@ -173,23 +186,60 @@ class XMPPWatchdogClient(object):
 
         if self.options.type == 'ping':
             im_component.marker = str(self.options.im_marker)
+            presence_component.marker = str(self.options.presence_marker)
+
             roster_handler.handlers.append(im_component)
+            roster_handler.handlers.append(presence_component)
+
+            for node in self.options.nodes.split(','):
+                node = str(node).strip()
+                self._statuses[node] = {}
+                for marker in self.options.markers.split(','):
+                    self._statuses[node][str(marker).strip()] = PENDING
 
     def store(self, marker, value):
         self.mc.set(marker, str(value))
 
-    def failed(self):
-        self.status = FAILURE
+    def fail(self, node):
+        markers = self.options.markers.split(',')
+        if self.options.im_marker in markers:
+            marker = '%s_%s' % (str(self.options.im_marker), node)
+            self.store(marker, 100000)
+        
+        if self.options.presence_marker in markers:
+            marker = '%s_AVAILABLE_%s' % (str(self.options.presence_marker), node)
+            self.store(marker, 100000)
+            marker = '%s_UNAVAILABLE_%s' % (str(self.options.presence_marker), node)
+            self.store(marker, 100000)
 
-    def fail_all(self):
-        node = str(self.options.resource)
+    def failed(self, node, marker):
+        self._statuses[node][marker] = FAILED
 
-        marker = '%s_%s' % (str(self.options.im_marker), node)
-        self.store(marker, 100000)
+    def succeeded(self, node, marker):
+        self._statuses[node][marker] = SUCCESS
 
-    def succeeded(self):
-        self.status = SUCCESS
-        self.stop()
+        can_stop = True
+        for marker in self._statuses[node]:
+            if self._statuses[node][marker] == PENDING:
+                can_stop = False
+                break
+            
+        if can_stop:
+            self.stop()
+
+    def check_statuses(self):
+        if self.status == CONNECTING:
+            # houston we couldn't connect
+            node = str(self.options.resource)
+            self.fail(node)
+            yield node
+
+        for node in self._statuses:
+            for marker in self._statuses[node]:
+                if self._statuses[node][marker] != SUCCESS:
+                    self.fail(node)
+                    yield node
+                    break
 
 class WatchdogPlugin(plugins.SimplePlugin):
     def __init__(self, bus, options, memcached_addr):
@@ -233,13 +283,8 @@ class WatchdogPlugin(plugins.SimplePlugin):
             self.client = None
 
     def check(self):
-        if self.client:
-            if self.client.status == PENDING:
-                self.bus.log("Watchdog client did not connect")
-                self.client.fail_all()
-            elif self.client.status == FAILURE:
-                self.bus.log("Watchdog client failed")
-                self.client.fail_all()
+        for failing_node in self.client.check_statuses():
+            self.bus.log("Node failure: %s" % failing_node)
 
     def restart_client(self):
         self.bus.log("Restarting Watchdog client")
@@ -256,7 +301,7 @@ class Watchdog(Process):
 
     def run(self):
         base_log_dir = os.path.join(os.getcwd(), 'logs')
-        self.logger = open_logger(base_log_dir, "watchdog.proc.log", "watchdog.logger")
+        self.logger = open_logger(base_log_dir, "watchdog.%s.log" % self.options.username, "watchdog.logger")
 
         from cherrypy.process.wspbus import Bus
         self.bus = bus = Bus()
