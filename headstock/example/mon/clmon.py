@@ -96,19 +96,20 @@ class Config(object):
 
         return default
 
+    def __contains__(self, key):
+        return key in self.__dict__
+
     def get_section_by_suffix(self, prefix, suffix, default=None):
         key = "%s%s" % (prefix, suffix)
         return getattr(self, key, default)
 
 class XMPPWatchdogClient(object):
-    def __init__(self, options):
+    def __init__(self, options, memcache_addr):
         self.conn = None
         self.running = False
 
         self.options = options
-        self.mc = None
-        if self.options.memcached:
-            self.mc = MemcachedClient([self.options.memcached])
+        self.mc = MemcachedClient(memcache_addr)
         self.init_client()
 
     def init_client(self):
@@ -165,25 +166,25 @@ class XMPPWatchdogClient(object):
         roster_handler.watchdog = self
 
         if self.options.type == 'ping':
+            im_component.marker = '%s_%s' % (str(self.options.im_marker), str(self.options.node))
             roster_handler.handlers.append(im_component)
 
-    def store(self, value):
-        if self.mc:
-            self.mc.set(str(self.options.memcached_key), str(value))
+    def store(self, marker, value):
+        self.mc.set(marker, str(value))
 
     def failed(self):
-        if self.mc:
-            self.mc.set(str(self.options.memcached_key), 100000)
+        self.mc.set(str(self.options.memcached_key), 100000)
 
     def succeeded(self):
         self.stop()
 
 class WatchdogPlugin(plugins.SimplePlugin):
-    def __init__(self, bus, options):
+    def __init__(self, bus, options, memcached_addr):
         self.bus = bus
         self.options = options
         self.client = None
-        
+        self.memcached_addr = memcached_addr
+
     def start(self):
         self.bus.log("Starting Watchdog client")
 
@@ -208,7 +209,7 @@ class WatchdogPlugin(plugins.SimplePlugin):
         self.monitor = _ThreadedMonitor(self, self.options.monitor_timeout)
         self.monitor.activate()
 
-        self.client = XMPPWatchdogClient(self.options)
+        self.client = XMPPWatchdogClient(self.options, self.memcached_addr)
         self.client.start()
 
     def stop(self):
@@ -226,14 +227,15 @@ class WatchdogPlugin(plugins.SimplePlugin):
     def restart_client(self):
         self.bus.log("Restarting Watchdog client")
         self.client.stop()
-        self.client = XMPPWatchdogClient(self.options)
+        self.client = XMPPWatchdogClient(self.options, self.memcached_addr)
         self.client.start()
 
 class Watchdog(Process):
-    def __init__(self, options):
+    def __init__(self, options, memcached_addr):
         Process.__init__(self)
         self.logger = None
         self.options = options
+        self.memcached_addr = memcached_addr
 
     def run(self):
         base_log_dir = os.path.join(os.getcwd(), 'logs')
@@ -248,7 +250,7 @@ class Watchdog(Process):
         from cherrypy.process import plugins  
         plugins.SignalHandler(bus).subscribe()
 
-        WatchdogPlugin(bus, self.options).subscribe()
+        WatchdogPlugin(bus, self.options, self.memcached_addr).subscribe()
         bus.start()
 
         try:
@@ -303,14 +305,16 @@ class WatchdogSupervisorPlugin(plugins.SimplePlugin):
         self.bus.log("Starting Watchdog")
         self.listener.start()
 
+        memcached_addr = self.config.run.memcached.split(',')
+
         from headstock.lib.utils import generate_unique
-        
+
         for i in range(0, self.config.run.watchdogs):
             options = self.config.get_section_by_suffix('watchdog', str(i))
             resource = unicode(options.resource)
             if options.random_resource:
                 resource = generate_unique()
-            w = Watchdog(options)
+            w = Watchdog(options, memcached_addr)
             self.watchdogs.append(w)
             w.start()
             time.sleep(0.1)
@@ -338,7 +342,7 @@ class WatchdogSupervisor(object):
     def __init__(self, config_path):
         self.config = Config.from_ini(config_path)
 
-    def run(self):
+    def run(self, daemon=False):
         base_log_dir = os.path.join(os.getcwd(), 'logs')
         self.logger = open_logger(base_log_dir, "watchdog.supervisor.log", "watchdog.supervisor.logger")
 
@@ -349,6 +353,8 @@ class WatchdogSupervisor(object):
         self.log("Starting Watchdog supervisor")
 
         plugins.SignalHandler(bus).subscribe()
+        if daemon:
+            plugins.Daemonizer(bus).subscribe()
 
         WatchdogSupervisorPlugin(bus, self.config).subscribe()
         bus.start()
@@ -366,11 +372,13 @@ if __name__ == '__main__':
         parser = OptionParser()
         parser.add_option("-c", "--config", dest="config",
                           help="Configuration file")
+        parser.add_option("-d", "--daemon", dest="daemon", action="store_true",
+                          help="Daemonize the supervisor process")
         (options, args) = parser.parse_args()
 
         return options
 
     options = parse_commandline()
     w = WatchdogSupervisor(options.config)
-    w.run()
+    w.run(options.daemon)
     

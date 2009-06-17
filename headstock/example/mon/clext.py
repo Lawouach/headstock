@@ -8,11 +8,15 @@ from headstock.lib.utils import generate_unique
 
 __all__ = ['MessagePingPong', 'RosterHandler']
 
-class MessagePingPong(IMComponent):
+class WatchdogSettings(object):
+    def __init__(self):
+        self.watchdog = None
+        self.marker = None
+
+class MessagePingPong(IMComponent, WatchdogSettings):
     def __init__(self):
         super(MessagePingPong, self).__init__()
         self.ids = []
-        self.watchdog = None
         self.roster = None
 
         self.start = None
@@ -43,15 +47,14 @@ class MessagePingPong(IMComponent):
                 if body.plain_body != u'pong':
                     self.watchdog.failed()
                 else:
-                    self.watchdog.store(time.time() - self.start)
+                    self.watchdog.store(self.marker, time.time() - self.start)
                     self.watchdog.succeeded()
             self.ids.remove(message.stanza_id)
 
-class RosterHandler(RosterComponent):
+class RosterHandler(RosterComponent, WatchdogSettings):
     def __init__(self):
         super(RosterComponent, self).__init__()
         self.handlers = []
-        self.watchdog = None
         
     def received_roster(self, roster):
         for handler in self.handlers:
