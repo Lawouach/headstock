@@ -37,17 +37,19 @@ class MessagePingPong(IMComponent, WatchdogSettings):
 
     def received_message(self, message):
         if message.stanza_id not in self.ids:
-            message.swap_jids()
-            message.bodies = [Body(u'pong')]
-            message.foreign = []
-            self.send(message, 'outbox')
+            m = Message(unicode(self.from_jid), unicode(message.from_jid), 
+                        type=u'chat', stanza_id=message.stanza_id)
+            m.bodies.append(Body(u'pong'))
+            self.send(m, 'outbox')
             self.watchdog.succeeded()
         else:
             for body in message.bodies:
+                marker = "%s_%s" % (self.marker, str(message.from_jid.resource))
                 if body.plain_body != u'pong':
+                    self.watchdog.store(marker, 100000)
                     self.watchdog.failed()
                 else:
-                    self.watchdog.store(self.marker, time.time() - self.start)
+                    self.watchdog.store(marker, time.time() - self.start)
                     self.watchdog.succeeded()
             self.ids.remove(message.stanza_id)
 

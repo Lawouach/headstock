@@ -166,14 +166,14 @@ class XMPPWatchdogClient(object):
         roster_handler.watchdog = self
 
         if self.options.type == 'ping':
-            im_component.marker = '%s_%s' % (str(self.options.im_marker), str(self.options.node))
+            im_component.marker = str(self.options.im_marker)
             roster_handler.handlers.append(im_component)
 
     def store(self, marker, value):
         self.mc.set(marker, str(value))
 
     def failed(self):
-        self.mc.set(str(self.options.memcached_key), 100000)
+        pass
 
     def succeeded(self):
         self.stop()
@@ -307,13 +307,8 @@ class WatchdogSupervisorPlugin(plugins.SimplePlugin):
 
         memcached_addr = self.config.run.memcached.split(',')
 
-        from headstock.lib.utils import generate_unique
-
         for i in range(0, self.config.run.watchdogs):
             options = self.config.get_section_by_suffix('watchdog', str(i))
-            resource = unicode(options.resource)
-            if options.random_resource:
-                resource = generate_unique()
             w = Watchdog(options, memcached_addr)
             self.watchdogs.append(w)
             w.start()

@@ -7,8 +7,7 @@ memcached: 127.0.0.1:11211
 username: watchdog01
 password: test
 domain: localhost
-resource:
-random_resource: True
+resource: localhost
 hostname: localhost
 port: 5222
 log_to_stdout: True
@@ -16,15 +15,13 @@ log_dir: ./logs/
 type: ping
 memcached: 127.0.0.1:11211
 monitor_timeout: 30
-node: localhost
 im_marker: IM
 
 [watchdog1]
 username: watchdog02
 password: test
 domain: localhost
-resource:
-random_resource: True
+resource: localhost
 hostname: localhost
 port: 5222
 log_to_stdout: True
