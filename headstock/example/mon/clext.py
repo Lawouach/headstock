@@ -35,7 +35,9 @@ class MessagePingPong(IMComponent):
         if message.stanza_id not in self.ids:
             message.swap_jids()
             message.bodies = [Body(u'pong')]
+            message.foreign = []
             self.send(message, 'outbox')
+            self.watchdog.succeeded()
         else:
             for body in message.bodies:
                 if body.plain_body != u'pong':
