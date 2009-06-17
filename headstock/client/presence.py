@@ -17,6 +17,8 @@ class PresenceComponent(component):
     Inboxes = {"inbox"       : "headstock.api.contact.Presence instance",
                "control"     : "Shutdown the client stream",
                "jid"          : "headstock.api.jid.JID instance received from the server",
+               "available"   : "",
+               "unavailable" : "",
                "requestedsub"   : "Received subscription from a peer",
                "requestedunsub" : "Received unsubscription from a peer",
                "acceptsub"   : "Accepted subscription",
@@ -26,6 +28,8 @@ class PresenceComponent(component):
     
     Outboxes = {"outbox" : "headstock.api.contact.Presence instance to return to the server",
                 "signal" : "Shutdown signal",
+                "contactavailable": "",
+                "contactunavailable": "",
                 "subrequested": "",
                 "unsubrequested": "",
                 "log"    : "log",}
@@ -51,6 +55,14 @@ class PresenceComponent(component):
             if self.dataReady("jid"):
                 self.from_jid = self.recv('jid')
             
+            if self.dataReady("available"):
+                p = self.recv("available")
+                self.contact_available(p)
+
+            if self.dataReady("unavailable"):
+                p = self.recv("unavailable")
+                self.contact_unavailable(p)
+
             if self.dataReady("requestedsub"):
                 p = self.recv("requestedsub")
                 self.subscription_requested(p)
@@ -79,6 +91,12 @@ class PresenceComponent(component):
                 self.pause()
   
             yield 1
+
+    def contact_available(self, p):
+        self.send(p, 'contactavailable')
+
+    def contact_unavailable(self, p):
+        self.send(p, 'contactunavailable')
 
     def subscription_requested(self, p):
         p.swap_jids()
@@ -112,6 +130,8 @@ class PresenceComponent(component):
 def make_linkages(presence_handler_cls=PresenceComponent):
     linkages = {("xmpp", "%s.presence" % XMPP_CLIENT_NS): ("presencedisp", "inbox"),
                 ("presencedisp", "log"): ('logger', "inbox"),
+                ("presencedisp", "xmpp.available"): ("presencehandler", "available"),
+                ("presencedisp", "xmpp.unavailable"): ("presencehandler", "unavailable"),
                 ("presencedisp", "xmpp.subscribe"): ("presencehandler", "requestedsub"),
                 ("presencedisp", "xmpp.unsubscribe"): ("presencehandler", "requestedunsub"),
                 ("presencehandler", "outbox"): ("presencedisp", "forward"),
