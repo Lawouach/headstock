@@ -103,10 +103,16 @@ class Config(object):
         key = "%s%s" % (prefix, suffix)
         return getattr(self, key, default)
 
+PENDING = 0
+SUCCESS = 1
+FAILURE = 2
+
 class XMPPWatchdogClient(object):
     def __init__(self, options, memcache_addr):
         self.conn = None
         self.running = False
+
+        self.status = PENDING
 
         self.options = options
         self.mc = MemcachedClient(memcache_addr)
@@ -173,9 +179,16 @@ class XMPPWatchdogClient(object):
         self.mc.set(marker, str(value))
 
     def failed(self):
-        pass
+        self.status = FAILURE
+
+    def fail_all(self):
+        node = str(self.options.resource)
+
+        marker = '%s_%s' % (str(self.options.im_marker), node)
+        self.store(marker, 100000)
 
     def succeeded(self):
+        self.status = SUCCESS
         self.stop()
 
 class WatchdogPlugin(plugins.SimplePlugin):
@@ -220,9 +233,13 @@ class WatchdogPlugin(plugins.SimplePlugin):
             self.client = None
 
     def check(self):
-        if self.client and self.client.running:
-            self.bus.log("Watchdog client failed")
-            self.client.failed()
+        if self.client:
+            if self.client.status == PENDING:
+                self.bus.log("Watchdog client did not connect")
+                self.client.fail_all()
+            elif self.client.status == FAILURE:
+                self.bus.log("Watchdog client failed")
+                self.client.fail_all()
 
     def restart_client(self):
         self.bus.log("Restarting Watchdog client")
