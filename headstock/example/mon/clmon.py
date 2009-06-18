@@ -28,7 +28,6 @@ except ImportError:
         handle = win32api.OpenProcess(1, 0, pid)
         return (0 != win32api.TerminateProcess(handle, 0))
 
-
 def open_logger(log_base_dir, log_filename, logger_name):
     logger = logging.getLogger(logger_name)
     logger.setLevel(logging.INFO)
@@ -327,115 +326,29 @@ class Watchdog(Process):
         if self.logger:
             self.logger.log(level, msg)
 
-class WatchdogListener(threading.Thread):
-    def __init__(self, bus):
-        threading.Thread.__init__(self)
-        self.running = False
-        self.connections = []
-        self.bus = bus
-        self.listener = Listener(('localhost', 12001), authkey="supervisor")
-        
-    def run(self):
-        self.bus.log("Listening for incoming connections")
-        self.running = True
-        while self.running:
-            conn = self.listener.accept()
-            pid = conn.recv()
-            self.bus.log("Listening from process: %s" % pid)
-            self.connections.append((pid, conn))
-
-    def stop(self):
-        self.bus.log("Stopping listener")
-        self.running = False
-        for pid, conn in self.connections:
-            if conn:
-                conn.close()
-        c = Client(('localhost', 12001), authkey='supervisor')
-        c.send(str(os.getcwd()))
-        c.close()
-        self.connections = []
-        self.listener.close()
-
-class WatchdogSupervisorPlugin(plugins.SimplePlugin):
-    def __init__(self, bus, config):
-        self.bus = bus
-        self.config = config
-        self.listener = WatchdogListener(bus)
-        self.watchdogs = []
-
-    def start(self):
-        self.bus.log("Starting Watchdog")
-        self.listener.start()
-
-        memcached_addr = self.config.run.memcached.split(',')
-
-        for i in range(0, self.config.run.watchdogs):
-            options = self.config.get_section_by_suffix('watchdog', str(i))
-            w = Watchdog(options, memcached_addr)
-            self.watchdogs.append(w)
-            w.start()
-            time.sleep(0.1)
-
-    def stop(self):
-        self.bus.log("Stopping Watchdogs")
-        self._kill_watchdog()
-        if self.listener:
-            self.listener.stop()
-            self.listener.join()
-            self.listener = None
-
-    def exit(self):
-        self.bus.log("Exiting Watchdogs")
-        self.stop()
-
-    def _kill_watchdog(self):
-        for watchdog in self.watchdogs:
-            if watchdog.is_alive():
-                kill_proc(watchdog.pid)
-                watchdog.join()
-        self.watchdogs = []
-
-class WatchdogSupervisor(object):
-    def __init__(self, config_path):
-        self.config = Config.from_ini(config_path)
-
-    def run(self, daemon=False):
-        base_log_dir = os.path.join(os.getcwd(), 'logs')
-        self.logger = open_logger(base_log_dir, "watchdog.supervisor.log", "watchdog.supervisor.logger")
-
-        from cherrypy.process.wspbus import Bus
-        self.bus = bus = Bus()
-        bus.subscribe('log', self.log)
-
-        self.log("Starting Watchdog supervisor")
-
-        plugins.SignalHandler(bus).subscribe()
-        if daemon:
-            plugins.Daemonizer(bus).subscribe()
-
-        WatchdogSupervisorPlugin(bus, self.config).subscribe()
-        bus.start()
-        bus.block()
-        
-        close_logger("watchdog.supervisor.logger")
-    
-    def log(self, msg, level=logging.INFO):
-        if self.logger:
-            self.logger.log(level, msg)
-
 if __name__ == '__main__':
     def parse_commandline():
         from optparse import OptionParser
         parser = OptionParser()
         parser.add_option("-c", "--config", dest="config",
                           help="Configuration file")
-        parser.add_option("-d", "--daemon", dest="daemon", action="store_true",
-                          help="Daemonize the supervisor process")
         (options, args) = parser.parse_args()
 
         return options
-
     options = parse_commandline()
-    w = WatchdogSupervisor(options.config)
-    w.run(options.daemon)
-    
+
+    from conductor.supervisor import SupervisorTask
+    class WatchdogSupervisorTask(SupervisorTask):
+        def start_task(self):
+            for i in range(0, self.config.run.watchdogs):
+                options = self.config.get_section_by_suffix('watchdog', str(i))
+                w = Watchdog(options, memcached_addr)
+                self.watchdogs.append(w)
+                w.start()
+                time.sleep(0.1)
+
+    from conductor.supervisor import Supervisor
+    s = Supervisor(os.getcwd(), options.config)
+    t = WatchdogSupervisorTask()
+    s.register_task(t)
+    s.run()

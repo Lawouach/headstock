@@ -1,33 +1,50 @@
+[global]
+supervisor.machin: "18"
+watchdog.toto: "12"
+
 [run]
-watchdogs: 2
-log_dir: ./logs/
-memcached: 127.0.0.1:11211
+daemon: False
+watchdogs: 3
+log_dir: "./logs/"
+memcached: "127.0.0.1:11211"
+
 
 [watchdog0]
-username: watchdog01
-password: test
-domain: localhost
-resource: localhost
-hostname: localhost
+username: "watchdog01"
+password: "test"
+domain: "localhost"
+resource: "localhost"
+hostname: "localhost"
 port: 5222
 log_to_stdout: True
-log_dir: ./logs/
-type: ping
-memcached: 127.0.0.1:11211
+log_dir: "./logs/"
+type: "ping"
 monitor_timeout: 30
-nodes: localhost
-markers: IM,PRESENCE
-im_marker: IM
-presence_marker: PRESENCE
+nodes: "localhost"
+markers: "IM,PRESENCE"
+im_marker: "IM"
+presence_marker: "PRESENCE"
 
 [watchdog1]
-username: watchdog02
-password: test
-domain: localhost
-resource: localhost
-hostname: localhost
+username: "watchdog02"
+password: "test"
+domain: "localhost"
+resource: "localhost"
+hostname: "localhost"
 port: 5222
 log_to_stdout: True
-log_dir: ./logs/
-type: pong
+log_dir: "./logs/"
+type: "pong"
+monitor_timeout: 30
+
+[watchdog2]
+username: "watchdog03"
+password: "test"
+domain: "localhost"
+resource: "localhost"
+hostname: "localhost"
+port: 5222
+log_to_stdout: True
+log_dir: "./logs/"
+type: "pong"
 monitor_timeout: 30

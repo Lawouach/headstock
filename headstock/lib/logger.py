@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import os, os.path
 
 from Axon.Component import component
 from Axon.Ipc import shutdownMicroprocess, producerFinished
@@ -7,6 +8,8 @@ from bridge import Element as E
 
 import logging
 from logging import handlers
+
+__all_ = ['Logger']
 
 class Logger(component):
     Inboxes = {"inbox" : "String to be logged",
