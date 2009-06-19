@@ -1,12 +1,16 @@
-[global]
-supervisor.machin: "18"
-watchdog.toto: "12"
-
-[run]
+[supervisor]
 daemon: False
-watchdogs: 3
-log_dir: "./logs/"
-memcached: "127.0.0.1:11211"
+log_dir: "./logs"
+log_enabled: True
+tasks: [("suptask01", clmon.WatchdogSupervisorTask)]
+
+[suptask01]
+listener_addr: ("127.0.0.1", 120001)
+listener_authkey: "secret"
+processes: [("xmppproc01", conductor.protocol.xmpp.XMPPProcess)]
+
+[xmppproc01]
+tasks: []
 
 
 [watchdog0]
