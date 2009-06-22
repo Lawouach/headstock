@@ -23,6 +23,6 @@ setup(name = "headstock",
       platforms = ["any"],
       license = 'BSD',
       long_description = "XMPP implementation using the Kamaelia library",
-      install_requires= ['bridge>=0.3.6'],
+      install_requires= ['bridge>=0.3.7'],
      )
 
