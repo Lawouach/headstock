@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 
-__version__ = "0.1.0"
+__version__ = "0.3.0"
 __authors__ = ["Sylvain Hellegouarch (sh@defuze.org)"]
-__date__ = "2008/05/12"
+__date__ = "2009/06/22"
 __copyright__ = """
-Copyright (c) 2006, 2007, 2008 Sylvain Hellegouarch
+Copyright (c) 2006, 2007, 2008, 2009 Sylvain Hellegouarch
 All rights reserved.
 """
 __license__ = """
