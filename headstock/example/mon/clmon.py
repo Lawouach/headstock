@@ -11,10 +11,14 @@ if __name__ == '__main__':
         parser = OptionParser()
         parser.add_option("-c", "--config", dest="config",
                           help="Configuration file")
+        parser.add_option("-v", "--verbose", dest="verbose", action="store_true",
+                          help="Outputs XMPP clients trace to stdout")
         (options, args) = parser.parse_args()
 
         return options
     options = parse_commandline()
+
+    from memcache import Client as MemcacheClient
 
     from conductor.lib.logger import open_logger, close_logger
     from conductor.connection import ProcClient, ProcListener
@@ -34,8 +38,21 @@ if __name__ == '__main__':
             t.settings.domain = "localhost"
             t.settings.resource = "localhost"
             t.settings.hostname = "localhost"
+            t.settings.log_stdout = options.verbose
             t.proc_connection = ProcClient(("127.0.0.1", 12001), "secret")
             t.nodes = ['localhost']
+            t.storage = MemcacheClient(['127.0.0.1:11211'])
+            p.register_task(t)
+
+            t = XMPPWatchdogPongTask(self.bus)
+            t.settings.username = "watchdog02"
+            t.settings.password = "test"
+            t.settings.domain = "localhost"
+            t.settings.resource = "localhost"
+            t.settings.hostname = "localhost"
+            t.settings.log_stdout = options.verbose
+            t.proc_connection = ProcClient(("127.0.0.1", 12001), "secret")
+            t.storage = MemcacheClient(['127.0.0.1:11211'])
             p.register_task(t)
 
             p.start()
