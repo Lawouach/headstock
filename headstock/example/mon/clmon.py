@@ -26,13 +26,13 @@ if __name__ == '__main__':
     from conductor.supervisor import SupervisorTask
     class WatchdogSupervisorTask(SupervisorTask):
         def start_task(self):
-            from conductor.protocol.xmpp import XMPPProcess
-            p = XMPPProcess()
+            from conductor.process import MixedProcess as Process
+            from conductor.protocol.xmpp.watchdog import XMPPWatchdogPingTask, XMPPWatchdogPongTask
+            
+            p = Process()
             p.logger = open_logger(log_dir, "xmpp.proc.watchdog01.log", "xmpp.proc.watchdog01.logger")
             self.supervised.append(p)
-
-            from conductor.protocol.xmpp.watchdog import XMPPWatchdogPingTask, XMPPWatchdogPongTask
-            t = XMPPWatchdogPingTask(self.bus)
+            t = XMPPWatchdogPingTask(p.bus)
             t.settings.username = "watchdog01"
             t.settings.password = "test"
             t.settings.domain = "localhost"
@@ -43,8 +43,12 @@ if __name__ == '__main__':
             t.nodes = ['localhost']
             t.storage = MemcacheClient(['127.0.0.1:11211'])
             p.register_task(t)
+            p.start()
 
-            t = XMPPWatchdogPongTask(self.bus)
+            p = Process()
+            p.logger = open_logger(log_dir, "xmpp.proc.watchdog02.log", "xmpp.proc.watchdog02.logger")
+            self.supervised.append(p)
+            t = XMPPWatchdogPongTask(p.bus)
             t.settings.username = "watchdog02"
             t.settings.password = "test"
             t.settings.domain = "localhost"
@@ -54,7 +58,6 @@ if __name__ == '__main__':
             t.proc_connection = ProcClient(("127.0.0.1", 12001), "secret")
             t.storage = MemcacheClient(['127.0.0.1:11211'])
             p.register_task(t)
-
             p.start()
 
     from conductor.supervisor import Supervisor
