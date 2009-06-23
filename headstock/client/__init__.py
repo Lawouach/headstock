@@ -293,6 +293,9 @@ class RegisteringClient(component):
         
         components, linkages = make_linkages()
         self.sequence[1].registerComponents(components, linkages)
+        # monkey patching ain't pretty
+        self.sequence[1].active = self.active
+        self.sequence[1].terminated = self.terminated
 
     def registerComponents(self, components, linkages):
         self.sequence[1].registerComponents(components, linkages)
@@ -300,6 +303,17 @@ class RegisteringClient(component):
     def get_component(self, key):
         return self.sequence[1].get_component(key)
         
+    def shutdown(self):
+        o = OneShot(msg=shutdownMicroprocess())
+        o.link((o, 'outbox'), (self.sequence[1], 'control'))
+        o.activate()
+
+    def active(self):
+        pass
+
+    def terminated(self):
+        pass
+
     def main(self):
         for comp in self.sequence:
             self.addChildren(comp)
