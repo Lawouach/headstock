@@ -181,7 +181,7 @@ class Client(component):
 
     def unhandled_stanza(self, stanza):
         #self.send(('UNHANDLED', stanza), 'log')
-        stanza.forget()
+        pass
     
     def initializeComponents(self):
         self.graph = Graphline(**self.base_graph)
