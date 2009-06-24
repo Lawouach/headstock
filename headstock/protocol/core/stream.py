@@ -126,6 +126,7 @@ class ClientStream(component):
                 "reset"  : "Reset the parser state",
                 "log"    : "String to be logged",
                 "error"  : "bridge.Element instance",
+                "streamroot": "bridge root element representing the stream",
                 "starttls": "",
                 "jid"    : "",
                 "features": "",
@@ -350,6 +351,7 @@ class ClientStream(component):
                     # OK the if/elif thing is ugly. I know.
                     if (e.xml_ns == XMPP_STREAM_NS) and (e.xml_name == 'features'):
                         self._handle_features(e)
+                        self.send(e.xml_root, "streamroot")
                     elif (e.xml_ns == XMPP_TLS_NS) and (e.xml_name == 'proceed'):
                         self._proceed_tls(e)
                         yield 1

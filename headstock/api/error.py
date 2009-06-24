@@ -12,7 +12,7 @@ class Error(object):
     def __init__(self, type, condition, code=None,
                  text=None, lang=None, foreign=None):
         self.type = type
-        self.condition = condition.replace('_', '-')
+        self.condition = (condition or u'').replace('_', '-')
         self.code = code
         self.text = text
         self.lang = lang

@@ -38,6 +38,7 @@ class Client(component):
                "unhandled"  : "",
                "error"      : "",
                "registration" : "",
+               "streamroot": "Stream root element",
                "control"    : "Shutdown the client stream"}
     
     Outboxes = {"outbox"  : "",
@@ -69,6 +70,8 @@ class Client(component):
         if password_lookup:
             self.password_lookup = password_lookup
         self.graph = None
+        # stream root element once initialized
+        self.root = None
 
         ClientStream.Outboxes["%s.iq" % XMPP_CLIENT_NS] = "Base stanza"
         ClientStream.Outboxes["%s.query" % XMPP_IBR_NS] = "Registration"
@@ -90,13 +93,11 @@ class Client(component):
         ClientStream.Outboxes["%s.x" % XMPP_PUBSUB_EVENT_NS] = ""
         ClientStream.Outboxes["%s.event" % XMPP_PUBSUB_EVENT_NS] = ""
 
-        self.stream = ClientStream(self.jid, self.password_lookup, use_tls=self.usetls)
-
         self.base_graph = dict(client = self,
                                logger = Logger(path=log_file_path, stdout=log_to_console, name=self.username),
                                tcp = TCPClient(self.hostname, self.port),
                                xmlparser = XMLIncrParser(),
-                               xmpp = self.stream,
+                               xmpp = ClientStream(self.jid, self.password_lookup, use_tls=self.usetls),
                                streamerr = StreamError(),
                                saslerr = SaslError(),
                                tracker = nullSinkComponent(),
@@ -110,6 +111,7 @@ class Client(component):
                                            ('client', 'outbox'): ('tcp', 'inbox'),
                                            ('client', 'signal'): ('tcp', 'control'),
                                            ("tcp", "outbox") : ("xmlparser", "inbox"),
+                                           ("xmpp", "streamroot") : ("client", "streamroot"),
                                            ("xmpp", "starttls") : ("tcp", "makessl"),
                                            ("tcp", "sslready") : ("xmpp", "tlssuccess"), 
                                            ("xmlparser", "outbox") : ("xmpp" , "inbox"),
@@ -179,12 +181,14 @@ class Client(component):
 
     def unhandled_stanza(self, stanza):
         #self.send(('UNHANDLED', stanza), 'log')
-        pass
+        stanza.forget()
     
     def initializeComponents(self):
         self.graph = Graphline(**self.base_graph)
         self.addChildren(self.graph)
         self.graph.activate()
+
+        self.base_graph.clear()
 
         return 1
 
@@ -223,6 +227,9 @@ class Client(component):
                     self.abort()
                 else:
                     self.send(feat, 'doauth')
+                
+            if self.dataReady("streamroot"):
+                self.root = self.recv('streamroot')
                 
             if self.dataReady("jid"):
                 self.jid = self.recv('jid')
@@ -312,7 +319,11 @@ class RegisteringClient(component):
         pass
 
     def terminated(self):
-        pass
+        self.sequence = []
+
+    @property
+    def root(self):
+        return self.sequence[1].root
 
     def main(self):
         for comp in self.sequence:
