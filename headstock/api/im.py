@@ -121,10 +121,10 @@ class Message(Entity):
                     b = XHTMLBody(child.xml_children.clone())
                     message.bodies.append(b)
                 else:
-                    message.foreign.append(Foreign(child))
+                    pass #message.foreign.append(Foreign(child.clone().xml_root))
             else:
-                message.foreign.append(Foreign(child))
-        
+                pass #message.foreign.append(Foreign(child.clone().xml_root))
+
         return message
 
     @staticmethod

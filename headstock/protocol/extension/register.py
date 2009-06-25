@@ -45,13 +45,14 @@ class RegisterDispatcher(component):
                 handled = False
                 a = self.recv("inbox")
                 e = a.xml_parent 
-                self.send(('INCOMING', e), "log")
+                self.send(('INCOMING', e.xml(indent=False, omit_declaration=True)), "log")
                 
                 msg_type = e.get_attribute_value(u'type') or u'get'
                 key = 'xmpp.%s' % unicode(msg_type)
 
                 if key in self.outboxes:
                     self.send(Registration.from_element(e), key)
+                    e.forget()
                     handled = True
 
                 if not handled:

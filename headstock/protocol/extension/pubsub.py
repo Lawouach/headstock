@@ -60,6 +60,7 @@ class SubscriptionDispatcher(component):
 
                 if key in self.outboxes:
                     self.send(Node.from_subscription_element(e), key)
+                    e.forget()
                     handled = True
 
                 if not handled:
@@ -111,13 +112,14 @@ class UnsubscriptionDispatcher(component):
                 handled = False
                 a = self.recv("inbox")
                 e = a.xml_parent.xml_parent
-                self.send(('INCOMING', e), "log")
+                self.send(('INCOMING', e.xml(indent=False, omit_declaration=True)), "log")
                 
                 msg_type = e.get_attribute_value(u'type') or 'get'
                 key = 'xmpp.%s' % unicode(msg_type)
 
                 if key in self.outboxes:
                     self.send(Node.from_unsubscription_element(e), key)
+                    e.forget()
                     handled = True
 
                 if not handled:
@@ -169,13 +171,14 @@ class NodeCreationDispatcher(component):
                 handled = False
                 a = self.recv("inbox")
                 e = a.xml_parent.xml_parent
-                self.send(('INCOMING', e), "log")
+                self.send(('INCOMING', e.xml(indent=False, omit_declaration=True)), "log")
                 
                 msg_type = e.get_attribute_value(u'type') or 'get'
                 key = 'xmpp.%s' % unicode(msg_type)
 
                 if key in self.outboxes:
                     self.send(Node.from_creation_element(e), key)
+                    e.forget()
                     handled = True
 
                 if not handled:
@@ -227,13 +230,14 @@ class NodeConfigureDispatcher(component):
                 handled = False
                 a = self.recv("inbox")
                 e = a.xml_parent.xml_parent
-                self.send(('INCOMING', e), "log")
+                self.send(('INCOMING', e.xml(indent=False, omit_declaration=True)), "log")
                 
                 msg_type = e.get_attribute_value(u'type') or 'get'
                 key = 'xmpp.%s' % unicode(msg_type)
 
                 if key in self.outboxes:
                     self.send(Node.from_configure_element(e), key)
+                    e.forget()
                     handled = True
 
                 if not handled:
@@ -285,13 +289,14 @@ class NodeDeletionDispatcher(component):
                 handled = False
                 a = self.recv("inbox")
                 e = a.xml_parent.xml_parent
-                self.send(('INCOMING', e), "log")
+                self.send(('INCOMING', e.xml(indent=False, omit_declaration=True)), "log")
                 
                 msg_type = e.get_attribute_value(u'type') or 'get'
                 key = 'xmpp.%s' % unicode(msg_type)
 
                 if key in self.outboxes:
                     self.send(Node.from_deletion_element(e), key)
+                    e.forget()
                     handled = True
 
                 if not handled:
@@ -344,13 +349,14 @@ class NodePurgeDispatcher(component):
                 handled = False
                 a = self.recv("inbox")
                 e = a.xml_parent.xml_parent
-                self.send(('INCOMING', e), "log")
+                self.send(('INCOMING', e.xml(indent=False, omit_declaration=True)), "log")
 
                 msg_type = e.get_attribute_value(u'type') or 'get'
                 key = 'xmpp.%s' % unicode(msg_type)
 
                 if key in self.outboxes:
                     self.send(Node.from_purge_element(e), key)
+                    e.forget()
                     handled = True
 
                 if not handled:
@@ -406,13 +412,14 @@ class ItemRetrievalDispatcher(component):
                 handled = False
                 a = self.recv("inbox")
                 e = a.xml_parent.xml_parent
-                self.send(('INCOMING', e), "log")
+                self.send(('INCOMING', e.xml(indent=False, omit_declaration=True)), "log")
                 
                 msg_type = e.get_attribute_value(u'type') or 'get'
                 key = 'xmpp.%s' % unicode(msg_type)
 
                 if key in self.outboxes:
                     self.send(Node.from_request_item(e), key)
+                    e.forget()
                     handled = True
 
                 if not handled:
@@ -464,13 +471,14 @@ class ItemPublicationDispatcher(component):
                 handled = False
                 a = self.recv("inbox")
                 e = a.xml_parent.xml_parent
-                self.send(('INCOMING', e), "log")
+                self.send(('INCOMING', e.xml(indent=False, omit_declaration=True)), "log")
                 
                 msg_type = e.get_attribute_value(u'type') or 'get'
                 key = 'xmpp.%s' % unicode(msg_type)
 
                 if key in self.outboxes:
                     self.send(Node.from_publication_element(e), key)
+                    e.forget()
                     handled = True
 
                 if not handled:
@@ -522,13 +530,14 @@ class ItemDeletionDispatcher(component):
                 handled = False
                 a = self.recv("inbox")
                 e = a.xml_parent.xml_parent
-                self.send(('INCOMING', e), "log")
+                self.send(('INCOMING', e.xml(indent=False, omit_declaration=True)), "log")
                 
                 msg_type = e.get_attribute_value(u'type') or 'get'
                 key = 'xmpp.%s' % unicode(msg_type)
 
                 if key in self.outboxes:
                     self.send(Node.from_retract_element(e), key)
+                    e.forget()
                     handled = True
 
                 if not handled:
@@ -572,13 +581,15 @@ class MessageEventDispatcher(component):
                 handled = False
                 a = self.recv("inbox")
                 e = a.xml_parent
-                self.send(('INCOMING', e), "log")
+                self.send(('INCOMING', e.xml(indent=False, omit_declaration=True)), "log")
 
                 m = Message.from_element(e)
 
                 if m.event == 'items':
+                    e.forget()
                     self.send(m, "xmpp.message")
                 elif m.event == 'purge':
+                    e.forget()
                     self.send(m, "xmpp.message.purge")
                 else:
                     self.send(e, "unknown")

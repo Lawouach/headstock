@@ -158,11 +158,12 @@ class ClientStream(component):
         
     def log(self, data, type="INCOMING"):
         """Drops data into the log box. """
+        if isinstance(data, E):
+            data = data.xml(omit_declaration=True, indent=False)
         self.send((type, data), "log")
 
     def track(self, element):
-        pass
-        #self.send(element, 'track')
+        pass #self.send(element, 'track')
         
     def propagate(self, element=None, raw=None):
         """Handy method to put either a bridge.Element instance or a raw byte string
@@ -171,6 +172,7 @@ class ClientStream(component):
         if element:
             self.track(element)
             raw = element.xml(omit_declaration=True, indent=False)
+            element.forget()
 
         if raw:
             self.log(raw, "OUTGOING")
@@ -199,12 +201,14 @@ class ClientStream(component):
         A(u'xmlns', value=XMPP_CLIENT_NS, parent=stream)
 
         data = self._trim_end_tag(stream, omit_decl)
+        stream.forget()
         self.propagate(raw=data)
 
     def _handle_features(self, e):
         self.log(e)
         self.status = CONNECTED
         feat = StreamFeatures.from_element(e)
+        e.forget()
         if feat.tls and self.use_tls:
             tls = E(u'starttls', namespace=XMPP_TLS_NS)
             self.propagate(element=tls)
@@ -216,6 +220,7 @@ class ClientStream(component):
 
     def _proceed_tls(self, e):
         self.log(e)
+        e.forget()
         self.send('', 'starttls')
 
     def _handle_challenge(self, e):
@@ -230,6 +235,7 @@ class ClientStream(component):
             response_token = compute_digest_response(params, self.jid.node,
                                                      password, digest_uri=digest_uri)
             
+        e.forget()
         response = E(u'response', content=response_token, namespace=XMPP_SASL_NS)
         self.propagate(element=response)
 
@@ -270,11 +276,13 @@ class ClientStream(component):
 
     def _handle_authenticated(self, e):
         self.log(e)
+        e.forget()
         self.status = AUTHENTICATED
         self._reset_stream_header()
 
     def _handle_binding(self, e):
         self.log(e)
+        e.xml_parent.forget()
         iq = Iq.create_set_iq(stanza_id=generate_unique())
         bind = E(u'bind', namespace=XMPP_BIND_NS, parent=iq)
         if self.jid.resource != None:
@@ -285,14 +293,16 @@ class ClientStream(component):
 
     def _handle_session(self, e):
         self.log(e)
+        e.xml_parent.forget()
         self.status = BOUND
         iq = Iq.create_set_iq(stanza_id=generate_unique())
-        session = E(u'session', namespace=XMPP_SESSION_NS, parent=iq)
+        E(u'session', namespace=XMPP_SESSION_NS, parent=iq)
         self.propagate(element=iq)
 
     def _handle_jid(self, e):
         self.log(e)
         self.jid = JID.parse(e.xml_text)
+        e.xml_parent.forget()
         
         self.status = ACTIVE
 
@@ -340,6 +350,7 @@ class ClientStream(component):
                 self.log(data, "OUTGOING")
                 self.track(data)
                 self.send(data.xml(omit_declaration=True, indent=False), "outbox")
+                data.forget()
 
             if self.dataReady("inbox"):
                 e = self.recv("inbox")
@@ -372,6 +383,8 @@ class ClientStream(component):
                         self.send(e, "error")
                     elif (e.xml_ns == XMPP_IBR_NS) and (e.xml_name == 'query'):
                         self.send(e, "%s.%s" % (e.xml_ns, e.xml_name))
+                    else:
+                        self.send(e, "unhandled")
                 elif (e.xml_ns == XMPP_STREAM_NS) and (e.xml_name == 'error'):
                     self.send(e, "error")
                 elif (e.xml_ns == XMPP_SASL_NS) and (e.xml_name == 'failure'):
@@ -392,8 +405,8 @@ class ClientStream(component):
                         # unhandled element.
                         self.send(e, "unhandled")
                 
-                if e.xml_name in ('iq', 'message', 'presence') and e.xml_ns == XMPP_CLIENT_NS:
-                    e.forget()
+                #if e.xml_name in ('iq', 'message', 'presence') and e.xml_ns == XMPP_CLIENT_NS:
+                #    e.forget()
                 e = None
                         
             if not self.anyReady():

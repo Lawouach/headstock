@@ -42,7 +42,7 @@ class Presence(Entity):
                 elif child.xml_name == 'priority':
                     p.priority = int(child.xml_text)
             else:
-                p.foreign.append(Foreign(child))
+                pass#p.foreign.append(Foreign(child.clone().xml_root))
                 
         return p
 

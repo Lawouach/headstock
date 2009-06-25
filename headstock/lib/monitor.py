@@ -23,22 +23,23 @@ class ThreadedMonitor(threadedcomponent):
                     self.send(producerFinished(), "signal")
                     break
 
+            if self.dataReady('inbox'):
+                self.interval = self.recv('inbox')
+
             if self.interval > 0:
+                print "waiting"
                 time.sleep(self.interval)
                 self.timeout()
             else:
                 break
 
-            self.send(True, "outbox")
-
-            while not self.anyReady():
+            if not self.anyReady():
                 self.pause()
 
-            if self.dataReady('inbox'):
-                self.interval = self.recv('inbox')
+            yield 1
 
     def timeout(self):
-        pass
+        self.send(True, "outbox")
 
     def reset(self, freq): 
         o = OneShot(msg=freq)

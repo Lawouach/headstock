@@ -53,7 +53,7 @@ class FeaturesDiscoveryDispatcher(component):
                 a = self.recv("inbox")
                 if a.get_attribute_value(u'node') == None:
                     e = a.xml_parent 
-                    self.send(('INCOMING', e), "log")
+                    self.send(('INCOMING', e.xml(indent=False, omit_declaration=True)), "log")
 
                     msg_type = e.get_attribute_value(u'type') or u'get'
                     key = 'xmpp.%s' % unicode(msg_type)
@@ -61,6 +61,7 @@ class FeaturesDiscoveryDispatcher(component):
 
                     if key in self.outboxes:
                         self.send(FeaturesDiscovery.from_element(e), key)
+                        e.forget()
                         handled = True
 
                     if not handled:
@@ -109,13 +110,14 @@ class ItemsDiscoveryDispatcher(component):
                 handled = False
                 e = self.recv("inbox")
                 e = e.xml_parent
-                self.send(('INCOMING', e), "log")
+                self.send(('INCOMING', e.xml(indent=False, omit_declaration=True)), "log")
                 
                 msg_type = e.get_attribute_value(u'type') or u'get'
                 key = 'xmpp.%s' % unicode(msg_type)
 
                 if key in self.outboxes:
                     self.send(ItemsDiscovery.from_element(e), key)
+                    e.forget()
                     handled = True
 
                 if not handled:
@@ -163,13 +165,14 @@ class SubscriptionsDiscoveryDispatcher(component):
                 handled = False
                 s = self.recv("inbox")
                 e = s.xml_parent.xml_parent
-                self.send(('INCOMING', e), "log")
+                self.send(('INCOMING', e.xml(indent=False, omit_declaration=True)), "log")
                 
                 msg_type = e.get_attribute_value(u'type') or u'get'
                 key = 'xmpp.%s' % unicode(msg_type)
 
                 if key in self.outboxes:
                     self.send(SubscriptionsDiscovery.from_element(e), key)
+                    e.forget()
                     handled = True
 
                 if not handled:
@@ -217,13 +220,14 @@ class AffiliationsDiscoveryDispatcher(component):
                 handled = False
                 s = self.recv("inbox")
                 e = s.xml_parent.xml_parent
-                self.send(('INCOMING', e), "log")
+                self.send(('INCOMING', e.xml(indent=False, omit_declaration=True)), "log")
                 
                 msg_type = e.get_attribute_value(u'type') or u'get'
                 key = 'xmpp.%s' % unicode(msg_type)
 
                 if key in self.outboxes:
                     self.send(AffiliationsDiscovery.from_element(e), key)
+                    e.forget()
                     handled = True
 
                 if not handled:
@@ -273,12 +277,13 @@ class InformationDiscoveryDispatcher(component):
                 s = self.recv("inbox")
                 if s.get_attribute_value(u'node') != None:
                     e = s.xml_parent
-                    self.send(('INCOMING', e), "log")
+                    self.send(('INCOMING', e.xml(indent=False, omit_declaration=True)), "log")
 
                     msg_type = e.get_attribute_value(u'type') or u'get'
                     key = 'xmpp.%s' % unicode(msg_type)
                     if key in self.outboxes:
                         self.send(InformationDiscovery.from_element(e), key)
+                        e.forget()
                         handled = True
 
                     if not handled:

@@ -171,6 +171,7 @@ class Client(component):
     def shutdown(self):
         o = OneShot(msg=shutdownMicroprocess())
         o.link((o, 'outbox'), (self, 'control'))
+        self.addChildren(o)
         o.activate()
 
     def active(self):
@@ -184,7 +185,8 @@ class Client(component):
 
     def unhandled_stanza(self, stanza):
         #self.send(('UNHANDLED', stanza), 'log')
-        pass
+        if stanza.xml_ns == XMPP_CLIENT_NS and stanza.xml_name in ('iq', 'presence', 'message'):
+            stanza.forget()
     
     def initializeComponents(self):
         self.graph = Graphline(**self.base_graph)

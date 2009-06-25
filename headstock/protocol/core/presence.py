@@ -53,13 +53,14 @@ class PresenceDispatcher(component):
 
             if self.dataReady("inbox"):
                 e = self.recv("inbox")
-                self.send(('INCOMING', e), "log")
+                self.send(('INCOMING', e.xml(indent=False, omit_declaration=True)), "log")
                 presence_type = e.get_attribute_value(u'type') or 'available'
                 handled = False
 
                 key = 'xmpp.%s' % presence_type
                 if key in self.outboxes:
                     self.send(Presence.from_element(e), key)
+                    e.forget()
                     handled = True
 
                 if not handled:

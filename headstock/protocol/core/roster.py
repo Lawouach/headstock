@@ -58,13 +58,14 @@ class RosterDispatcher(component):
 
             if self.dataReady("inbox"):
                 e = self.recv("inbox")
-                self.send(('INCOMING', e.xml_parent), "log")
+                self.send(('INCOMING', e.xml_parent.xml(indent=False, omit_declaration=True)), "log")
                 roster_type = e.xml_parent.get_attribute(u'type')
                 handled = False
                 if roster_type:
                     key = 'xmpp.%s' % roster_type
                     if key in self.outboxes:
                         self.send(Roster.from_element(e), key)
+                        e.xml_parent.forget()
                         handled = True
 
                 if not handled:

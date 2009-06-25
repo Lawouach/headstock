@@ -42,13 +42,14 @@ class MessageDispatcher(component):
             if self.dataReady("inbox"):
                 handled = False
                 e = self.recv("inbox")
-                self.send(('INCOMING', e), "log")
+                self.send(('INCOMING', e.xml(indent=False, omit_declaration=True)), "log")
                 
                 msg_type = e.get_attribute_value(u'type') or 'normal'
                 key = 'xmpp.%s' % unicode(msg_type)
 
                 if key in self.outboxes:
                     self.send(Message.from_element(e), key)
+                    e.forget()
                     handled = True
 
                 if not handled:

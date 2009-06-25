@@ -40,7 +40,11 @@ class XMLIncrParser(component):
 
                 if isinstance(mes, shutdownMicroprocess) or \
                         isinstance(mes, producerFinished):
+
                     p.reset()
+                    p = DispatchParser()
+                    p.register_default(self._done)
+
                     self.send(producerFinished(), "signal")
                     break
 
