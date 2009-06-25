@@ -92,6 +92,11 @@ class PresenceComponent(component):
   
             yield 1
 
+        self.cleanup()
+
+    def cleanup(self):
+        pass
+
     def contact_available(self, p):
         self.send(p, 'contactavailable')
 

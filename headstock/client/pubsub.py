@@ -191,6 +191,11 @@ class PubSubDiscoveryComponent(component):
   
             yield 1
 
+        self.cleanup()
+
+    def cleanup(self):
+        pass
+
 class PubSubNodeComponent(component):
     Inboxes = {"inbox"       : "",
                "control"     : "", 
@@ -349,6 +354,11 @@ class PubSubNodeComponent(component):
                 self.pause()
   
             yield 1
+
+        self.cleanup()
+
+    def cleanup(self):
+        pass
 
     def create_node(self, node_id):
         p = Node(unicode(self.from_jid), self.pubsub_service, node_name=node_id)

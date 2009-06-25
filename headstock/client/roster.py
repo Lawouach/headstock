@@ -85,7 +85,12 @@ class RosterComponent(component):
   
             yield 1
 
+        self.cleanup()
+
     def ready(self):
+        pass
+
+    def cleanup(self):
         pass
 
     def updated_roster(self, roster):

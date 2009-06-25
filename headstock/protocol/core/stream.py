@@ -161,7 +161,8 @@ class ClientStream(component):
         self.send((type, data), "log")
 
     def track(self, element):
-        self.send(element, 'track')
+        pass
+        #self.send(element, 'track')
         
     def propagate(self, element=None, raw=None):
         """Handy method to put either a bridge.Element instance or a raw byte string

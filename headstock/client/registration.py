@@ -82,6 +82,11 @@ class RegistrationComponent(component):
   
             yield 1
 
+        self.cleanup()
+
+    def cleanup(self):
+        pass
+
 def make_linkages():        
     linkages = {("xmpp", "%s.query" % XMPP_IBR_NS): ("registerdisp", "inbox"),
                 ("registerdisp", "log"): ('logger', "inbox"),

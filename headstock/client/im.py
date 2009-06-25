@@ -62,7 +62,12 @@ class IMComponent(component):
   
             yield 1
 
+        self.cleanup()
+
     def ready(self):
+        pass
+
+    def cleanup(self):
         pass
 
     def send_message(self, jid, text):

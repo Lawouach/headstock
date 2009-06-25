@@ -119,7 +119,12 @@ class CotComponent(component):
 
         self.send(producerFinished(), "signal")
         
+        self.cleanup()
+
         yield 1
+
+    def cleanup(self):
+        pass
 
     def start_job(self):
         self.started = True

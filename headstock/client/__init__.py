@@ -176,6 +176,9 @@ class Client(component):
     def active(self):
         pass
 
+    def cleanup(self):
+        pass
+
     def terminated(self):
         pass
 
@@ -258,7 +261,9 @@ class Client(component):
                 self.pause()
             
             yield 1
-                   
+               
+        self.cleanup()
+    
         for child in self.graph.children:
             linkage = self.graph.link((self.graph, "signal"), (child, "control"))
             self.graph.send(shutdownMicroprocess(), 'signal')
@@ -316,6 +321,9 @@ class RegisteringClient(component):
         o.activate()
 
     def active(self):
+        pass
+
+    def cleanup(self):
         pass
 
     def terminated(self):
