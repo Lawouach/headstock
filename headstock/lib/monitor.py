@@ -27,16 +27,13 @@ class ThreadedMonitor(threadedcomponent):
                 self.interval = self.recv('inbox')
 
             if self.interval > 0:
-                print "waiting"
                 time.sleep(self.interval)
                 self.timeout()
             else:
                 break
-
+            
             if not self.anyReady():
                 self.pause()
-
-            yield 1
 
     def timeout(self):
         self.send(True, "outbox")
