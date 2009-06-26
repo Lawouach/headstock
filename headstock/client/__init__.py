@@ -171,7 +171,6 @@ class Client(component):
     def shutdown(self):
         o = OneShot(msg=shutdownMicroprocess())
         o.link((o, 'outbox'), (self, 'control'))
-        self.addChildren(o)
         o.activate()
 
     def active(self):
