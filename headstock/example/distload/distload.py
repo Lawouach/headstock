@@ -91,10 +91,11 @@ class JobClient(object):
                         else:
                             self.root.forget()
                         self.root = None
-
+                    
                 def terminated(self):
                     self.stop()
-
+                    self.job = None
+                    
         self.client = _Client(username=unicode(options.username), 
                               password=unicode(options.password), 
                               domain=unicode(options.domain),
@@ -132,7 +133,7 @@ class JobClient(object):
         cot_component.manager.report()
 
     def stats(self):
-        from headstock.lib.export.fusionchart import V3LineExporter
+        #from headstock.lib.export.fusionchart import V3LineExporter
         tracker_component = self.client.get_component('trackerhandler')
         #V3LineExporter.write(V3LineExporter.export(tracker.component.started,
         #                                           tracker_component.terminated,

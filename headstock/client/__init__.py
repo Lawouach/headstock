@@ -265,7 +265,7 @@ class Client(component):
             yield 1
                
         self.cleanup()
-    
+        
         for child in self.graph.children:
             linkage = self.graph.link((self.graph, "signal"), (child, "control"))
             self.graph.send(shutdownMicroprocess(), 'signal')
@@ -332,9 +332,13 @@ class RegisteringClient(component):
     def terminated(self):
         self.sequence = []
 
-    @property
-    def root(self):
+    def _get_root(self):
         return self.sequence[1].root
+
+    def _set_root(self, root):
+        self.sequence[1].root = root
+
+    root = property(_get_root, _set_root)
 
     def main(self):
         for comp in self.sequence:
