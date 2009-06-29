@@ -23,6 +23,7 @@ class CotComponent(component):
     Outboxes = {"outbox"   : "",
                 "signal"   : "",
                 "_monitor" : "",
+                "_enable_monitoring": "",
                 "log"      : ""}
 
     def __init__(self, keep_alive=False, timeout=0):
@@ -66,7 +67,9 @@ class CotComponent(component):
 
     def main(self):
         yield self.initComponents()
-            
+
+        self.send(True, "_enable_monitoring")
+
         self.running = True
         while self.running:
             if self.dataReady("control"):
@@ -219,6 +222,7 @@ def make_linkages(manager, cot_handler_cls=CotComponent):
     linkages = {("cothandler", "log"): ('logger', "inbox"),
                 ("cothandler", "outbox"): ("xmpp", "forward"),
                 ("cothandler", "signal"): ("client", "control"),
+                ("cothandler", "_enable_monitoring"): ("xmpp", "trackingenabled"),
                 ('jidsplit', 'cotjid'): ('cothandler', 'jid'),
                 ('boundsplit', 'cotbound'): ('cothandler', 'bound')}
     mapping = []

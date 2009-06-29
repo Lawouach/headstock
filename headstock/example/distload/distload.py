@@ -61,29 +61,51 @@ class Config(object):
 class JobClient(object):
     def __init__(self, options, stdout_log=False, log_path=None):
         from headstock.client import Client, RegisteringClient
+
         if not options.register:
-            self.client = Client(username=unicode(options.username), 
-                                 password=unicode(options.password), 
-                                 domain=unicode(options.domain),
-                                 resource=unicode(options.resource),
-                                 hostname=options.hostname, 
-                                 port=int(options.port),
-                                 usetls=options.tls,
-                                 register=False,
-                                 unregister=options.unregister,
-                                 log_file_path=log_path,
-                                 log_to_console=stdout_log)
+            register = False
+            class _Client(Client):
+                def cleanup(self):
+                    if self.root:
+                        if self.root.xml_parent:
+                            self.root.xml_parent.forget()
+                        else:
+                            self.root.forget()
+                        self.root = None
+
+                    self.job.report()
+                    self.job.stats()
+
+                def terminated(self):
+                    self.stop()
         else:
-            self.client = RegisteringClient(username=unicode(options.username), 
-                                            password=unicode(options.password), 
-                                            domain=unicode(options.domain),
-                                            resource=unicode(options.resource),
-                                            hostname=options.hostname, 
-                                            port=int(options.port),
-                                            usetls=options.tls,
-                                            unregister=options.unregister,
-                                            log_file_path=log_path,
-                                            log_to_console=stdout_log)
+            register = True
+            class _Client(RegisteringClient):
+                def cleanup(self):
+                    if self.root:
+                        if self.root.xml_parent:
+                            self.root.xml_parent.forget()
+                        else:
+                            self.root.forget()
+                        self.root = None
+
+                    self.job.report()
+                    self.job.stats()
+
+                def terminated(self):
+                    self.stop()
+
+        self.client = _Client(username=unicode(options.username), 
+                              password=unicode(options.password), 
+                              domain=unicode(options.domain),
+                              resource=unicode(options.resource),
+                              hostname=options.hostname, 
+                              port=int(options.port),
+                              usetls=options.tls,
+                              register=register,
+                              unregister=options.unregister,
+                              log_file_path=log_path,
+                              log_to_console=stdout_log)
 
     def start(self):
         self.client.activate()
@@ -149,10 +171,6 @@ class LoadRunnerProcess(Process):
         from Axon.Scheduler import scheduler 
         scheduler.immortalise()
         scheduler.run.runThreads()
-
-        for c in self.clients:
-            c.report()
-            c.stats()
 
 class XMPPDistributedLoadManager(object):
     def __init__(self, config):

@@ -47,6 +47,7 @@ class StanzaTracker(component):
             if self.dataReady("outgoing"):
                 e = self.recv("outgoing")
                 self.track(e)
+                e.forget()
 
             if not self.anyReady():
                 self.pause()

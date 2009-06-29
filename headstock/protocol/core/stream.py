@@ -117,6 +117,7 @@ class ClientStream(component):
                "control"   : "Shutdown the client stream",
                "forward"   : "bridge.Element instance to be sent out to the client",
                "auth"      : "Perform authentication",
+               "trackingenabled": "",
                "proceedtls": "",
                "tlssuccess": "",
                "tlsfailure": ""}
@@ -153,6 +154,7 @@ class ClientStream(component):
         self.jid = jid
         self.password_lookup = password_lookup
         self.use_tls = use_tls
+        self.tracking_enabled = False
 
         self.status = DISCONNECTED
         
@@ -163,14 +165,15 @@ class ClientStream(component):
         self.send((type, data), "log")
 
     def track(self, element):
-        pass #self.send(element, 'track')
+        self.send(element.clone().xml_root, 'track')
         
     def propagate(self, element=None, raw=None):
         """Handy method to put either a bridge.Element instance or a raw byte string
         into the outbox box. If element is passed it will set ``raw`` to a serialized
         representation of the XML fragment it represents, as a byte string."""
         if element:
-            self.track(element)
+            if self.tracking_enabled:
+                self.track(element)
             raw = element.xml(omit_declaration=True, indent=False)
             element.forget()
 
@@ -342,13 +345,17 @@ class ClientStream(component):
                 feat = self.recv('auth')
                 self._handle_auth(feat)
 
+            if self.dataReady("trackingenabled"):
+                self.tracking_enabled = self.recv('trackingenabled')
+
             if self.dataReady("forward"):
                 # The forward box is used by XMPP components to drop a
                 # bridge.Element instance that should be passed onto the
                 # the outbox in a serialized format (a byte string).
                 data = self.recv("forward")
                 self.log(data, "OUTGOING")
-                self.track(data)
+                if self.tracking_enabled:
+                    self.track(data)
                 self.send(data.xml(omit_declaration=True, indent=False), "outbox")
                 data.forget()
 
