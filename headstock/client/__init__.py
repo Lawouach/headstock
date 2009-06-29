@@ -157,6 +157,8 @@ class Client(component):
             self.base_graph['linkages'].update(linkages)
 
     def get_component(self, key):
+        if self.graph:
+            return self.graph.components.get(key, None)
         return self.base_graph.get(key, None)
 
     def close(self):       
@@ -251,8 +253,9 @@ class Client(component):
 
             if self.dataReady("error"):
                 e = self.recv('error')
-                self.send(('INCOMING', e), "log")
+                self.send(('INCOMING', e.xml(indent=False, omit_declaration=True)), "log")
                 err = Error.from_element(e)
+                e.forget()
                 if err.condition in ['not-authorized', 'failure'] and self.register:
                     self.send((self.username, self.password), 'askregistration')
                 
@@ -306,6 +309,7 @@ class RegisteringClient(component):
         self.sequence[1].registerComponents(components, linkages)
         # monkey patching ain't pretty
         self.sequence[1].active = self.active
+        self.sequence[1].cleanup = self.cleanup
         self.sequence[1].terminated = self.terminated
 
     def registerComponents(self, components, linkages):

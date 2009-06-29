@@ -66,15 +66,15 @@ class JobClient(object):
             register = False
             class _Client(Client):
                 def cleanup(self):
+                    self.job.report()
+                    self.job.stats()
+
                     if self.root:
                         if self.root.xml_parent:
                             self.root.xml_parent.forget()
                         else:
                             self.root.forget()
                         self.root = None
-
-                    self.job.report()
-                    self.job.stats()
 
                 def terminated(self):
                     self.stop()
@@ -82,15 +82,15 @@ class JobClient(object):
             register = True
             class _Client(RegisteringClient):
                 def cleanup(self):
+                    self.job.report()
+                    self.job.stats()
+                    
                     if self.root:
                         if self.root.xml_parent:
                             self.root.xml_parent.forget()
                         else:
                             self.root.forget()
                         self.root = None
-
-                    self.job.report()
-                    self.job.stats()
 
                 def terminated(self):
                     self.stop()
@@ -106,6 +106,7 @@ class JobClient(object):
                               unregister=options.unregister,
                               log_file_path=log_path,
                               log_to_console=stdout_log)
+        self.client.job = self
 
     def start(self):
         self.client.activate()
@@ -215,6 +216,8 @@ class XMPPDistributedLoadManager(object):
                 p = LoadRunnerProcess(job)
                 p.start()
                 self.log("Started job '%s' on PID: %d" % (job.name, p.pid))
+
+        self.log("Started all jobs")
 
         while active_children():
             time.sleep(0.05)
