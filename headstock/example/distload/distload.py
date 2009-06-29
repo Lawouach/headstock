@@ -93,7 +93,6 @@ class JobClient(object):
                         self.root = None
                     
                 def terminated(self):
-                    self.stop()
                     self.job = None
                     
         self.client = _Client(username=unicode(options.username), 
@@ -171,7 +170,7 @@ class LoadRunnerProcess(Process):
             c.start()
 
         from Axon.Scheduler import scheduler 
-        scheduler.immortalise()
+        #scheduler.immortalise()
         scheduler.run.runThreads()
 
 class XMPPDistributedLoadManager(object):

@@ -108,7 +108,6 @@ class Client(component):
                                linkages = {('xmpp', 'terminated'): ('client', 'inbox'),
                                            ('client', 'forward'): ('xmpp', 'forward'),
                                            ('client', 'outbox'): ('tcp', 'inbox'),
-                                           ('client', 'signal'): ('tcp', 'control'),
                                            ("tcp", "outbox") : ("xmlparser", "inbox"),
                                            ("xmpp", "streamroot") : ("client", "streamroot"),
                                            ("xmpp", "starttls") : ("tcp", "makessl"),
@@ -190,6 +189,7 @@ class Client(component):
     def initializeComponents(self):
         self.graph = Graphline(**self.base_graph)
         self.addChildren(self.graph)
+        self.link((self, 'signal'), (self.graph, 'control'))
         self.graph.activate()
 
         self.base_graph.clear()
@@ -213,7 +213,7 @@ class Client(component):
                     else:
                         self.close()
                         yield 1
-                        self.send(producerFinished(), "signal")
+                        self.send(shutdownMicroprocess(), "signal")
                         yield 1
                         self.running = False
 
@@ -265,19 +265,22 @@ class Client(component):
             yield 1
                
         self.cleanup()
+
+        self.send(shutdownMicroprocess(), "signal")
         
+        yield 1
+
         for child in self.graph.children:
             linkage = self.graph.link((self.graph, "signal"), (child, "control"))
             self.graph.send(shutdownMicroprocess(), 'signal')
             self.graph.unlink(thelinkage=linkage)
 
-        yield shutdownMicroprocess(self, self.children)
-
         for child in self.graph.children:
-            self.removeChild(child)
+            self.graph.removeChild(child)
 
         for child in self.children:
             self.removeChild(child)
+        self.graph = None
 
         self.terminated()
 
@@ -341,15 +344,16 @@ class RegisteringClient(component):
     root = property(_get_root, _set_root)
 
     def main(self):
+        from Axon.Scheduler import scheduler
         for comp in self.sequence:
             self.addChildren(comp)
             comp.activate()
-            
+
             while not self.childrenDone():
                 self.pause()
                 yield 1
-
-        self.send(producerFinished(self), "signal")
+                
+        self.send(shutdownMicroprocess(), "signal")
 
     def childrenDone(self):
         for child in self.childComponents():

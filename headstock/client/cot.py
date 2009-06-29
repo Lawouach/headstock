@@ -49,6 +49,7 @@ class CotComponent(component):
             self.monitor = ThreadedMonitor(self.timeout)
             self.link((self.monitor, 'outbox'), (self, 'healthcheck'))
             self.link((self, '_monitor'), (self.monitor, 'inbox'))
+            self.link((self, 'signal'), (self.monitor, 'control'))
             self.addChildren(self.monitor)
             self.monitor.activate()
         return 1
@@ -77,7 +78,7 @@ class CotComponent(component):
                 
                 if isinstance(mes, shutdownMicroprocess) or \
                         isinstance(mes, producerFinished):
-                    self.send(producerFinished(), "signal")
+                    self.send(shutdownMicroprocess(), "signal")
                     break
 
             if self.dataReady("jid"):
@@ -120,7 +121,7 @@ class CotComponent(component):
   
             yield 1
 
-        self.send(producerFinished(), "signal")
+        self.send(shutdownMicroprocess(), "signal")
         
         self.cleanup()
 
