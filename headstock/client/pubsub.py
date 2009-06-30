@@ -225,10 +225,12 @@ class PubSubNodeComponent(component):
                "xmpp.result": "",
                "published": "",
                "publish.error": "",
+               "retracted": "",
                "retract.error": ""}
     
     Outboxes = {"outbox"        : "",
                 "signal"        : "Shutdown signal",
+                "handle-next-response-stanza": "Ask the unhandled component to forward us a specific stanza",
                 "create-node"   : "",
                 "delete-node"   : "",
                 "configure-node": "",
@@ -246,6 +248,8 @@ class PubSubNodeComponent(component):
                 "subscribed-node": "",
                 "deleted-node": "",
                 "received-message": "",
+                "published-item": "",
+                "retracted-item": "",
                 "purged-node": ""}
 
     def __init__(self, pubsub_service):
@@ -273,6 +277,7 @@ class PubSubNodeComponent(component):
 
             if self.dataReady("bound"):
                 self.recv('bound')
+                self.ready()
 
             if self.dataReady('error'):
                 node = self.recv('error')
@@ -350,6 +355,14 @@ class PubSubNodeComponent(component):
                 node = self.recv('purged')
                 self.node_purged(node)
                 
+            if self.dataReady('published'):
+                node = self.recv('published')
+                self.item_published(node)
+                
+            if self.dataReady('retracted'):
+                node = self.recv('retracted')
+                self.item_retracted(node)
+                
             if not self.anyReady():
                 self.pause()
   
@@ -357,12 +370,16 @@ class PubSubNodeComponent(component):
 
         self.cleanup()
 
+    def ready(self):
+        pass
+
     def cleanup(self):
         pass
 
     def create_node(self, node_id):
         p = Node(unicode(self.from_jid), self.pubsub_service, node_name=node_id)
         self.send(p, "create-node")
+        return p
 
     def create_collection_node(self, node_id, associate_id=None):
         p = Node(unicode(self.from_jid), self.pubsub_service, node_name=node_id)
@@ -371,37 +388,47 @@ class PubSubNodeComponent(component):
         else:
             p.associate_with_node(associate_id)
         self.send(p, "create-node")
+        return p
 
     def configure_node(self, node_id, dataform):
         p = Node(unicode(self.from_jid), self.pubsub_service, node_name=node_id)
         p.configure = Configure(dataform)
         self.send(p, "configure-node")
+        return p
 
     def fetch_item(self, node_id, item_id):
         p = Node(unicode(self.from_jid), self.pubsub_service, type=u"get",
                  node_name=node_id, item=Item(id=item_id))
         self.send(p, "retrieve-item")
+        return p
 
     def fetch_items(self, node_id):
         p = Node(unicode(self.from_jid), self.pubsub_service, type=u"get",
                  node_name=node_id)
         self.send(p, "retrieve-all-items")
+        return p
 
     def publish_item(self, node_id, item_id, payload):
         i = Item(id=item_id, payload=payload)
         p = Node(unicode(self.from_jid), self.pubsub_service, 
                  node_name=node_id, item=i)
+        self.send(('pubsubdisp', "publish.inbox", p.stanza_id), "handle-next-response-stanza")
         self.send(p, "publish-item")
+        return p
 
     def delete_item(self, node_id, item_id):
         i = Item(id=item_id)
         p = Node(unicode(self.from_jid), self.pubsub_service, 
                  node_name=node_id, item=i)
+        self.send(('pubsubdisp', "retract.inbox", p.stanza_id), "handle-next-response-stanza")
         self.send(p, "delete-item")
+        return p
 
     def delete_node(self, node_id):
         p = Node(unicode(self.from_jid), self.pubsub_service, node_name=node_id)
+        self.send(('pubsubdisp', "delete.inbox", p.stanza_id), "handle-next-response-stanza")
         self.send(p, "delete-node")
+        return p
 
     def purge_node(self, node_id):
         p = Node(unicode(self.from_jid), self.pubsub_service, node_name=node_id)
@@ -411,11 +438,13 @@ class PubSubNodeComponent(component):
         p = Node(unicode(self.from_jid), self.pubsub_service,
                  node_name=node_id, sub_jid=self.from_jid.nodeid())
         self.send(p, "subscribe-node")
+        return p
 
     def unsubscribe_from_node(self, node_id):
         p = Node(unicode(self.from_jid), self.pubsub_service,
                  node_name=node_id, sub_jid=self.from_jid.nodeid())
         self.send(p, "unsubscribe-node")
+        return p
 
     def node_fetched(self, node):
         self.send(node, "retrieved-node")
@@ -438,6 +467,12 @@ class PubSubNodeComponent(component):
     def message_received(self, message):
         self.send(node, "received-message")
 
+    def item_published(self, node):
+        self.send(node, "published-item")
+
+    def item_retracted(self, node):
+        self.send(node, "retracted-item")
+
     def error(self, node):
         self.send(node, 'node-error')
 
@@ -453,6 +488,7 @@ def make_node_linkages(pubsub_service, pubsub_handler_cls=PubSubNodeComponent):
                 ("xmpp", "%s.x" % XMPP_PUBSUB_EVENT_NS): ("pubsubdisp", "message.inbox"),
                 ("xmpp", "%s.event" % XMPP_PUBSUB_EVENT_NS): ("pubsubdisp", "message.inbox"),
                 ("pubsubdisp", "log"): ('logger', "inbox"),
+                ("itemshandler", "handle-next-response-stanza"): ("unhandledhandler", "temporary"),
                 ("itemshandler", "create-node"): ("pubsubdisp", "create.forward"),
                 ("itemshandler", "configure-node"): ("pubsubdisp", "configure.forward"),
                 ("itemshandler", "delete-node"): ("pubsubdisp", "delete.forward"),
@@ -490,6 +526,7 @@ def make_node_linkages(pubsub_service, pubsub_handler_cls=PubSubNodeComponent):
                 ("pubsubdisp", "out.publish.error"): ("itemshandler", "publish.error"),
                 ("pubsubdisp", "out.retract.error"): ("itemshandler", "retract.error"),
                 ("pubsubdisp", "out.publish.result"): ("itemshandler", "published"),
+                ("pubsubdisp", "out.retract.result"): ("itemshandler", "retracted"),
                 ('jidsplit', 'pubsubnodejid'): ('itemshandler', 'jid'),
                 ('boundsplit', 'pubsubnodebound'): ('itemshandler', 'bound')}
     return dict(itemshandler=pubsub_handler_cls(pubsub_service),

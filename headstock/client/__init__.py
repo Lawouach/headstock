@@ -73,7 +73,7 @@ class Client(component):
         # stream root element once initialized
         self.root = None
 
-        ClientStream.Outboxes["%s.iq" % XMPP_CLIENT_NS] = "Base stanza"
+        #ClientStream.Outboxes["%s.iq" % XMPP_CLIENT_NS] = "Base stanza"
         ClientStream.Outboxes["%s.query" % XMPP_IBR_NS] = "Registration"
         ClientStream.Outboxes["%s.query" % XMPP_LAST_NS] = "Activity"
         ClientStream.Outboxes["%s.query" % XMPP_VERSION_NS] = "Version software"
@@ -183,9 +183,10 @@ class Client(component):
 
     def unhandled_stanza(self, stanza):
         #self.send(('UNHANDLED', stanza), 'log')
-        if stanza.xml_ns == XMPP_CLIENT_NS and stanza.xml_name in ('iq', 'presence', 'message'):
-            stanza.forget()
-    
+        #if stanza.xml_ns == XMPP_CLIENT_NS and stanza.xml_name in ('iq', 'presence', 'message'):
+        #    stanza.forget()
+        pass
+
     def initializeComponents(self):
         self.graph = Graphline(**self.base_graph)
         self.addChildren(self.graph)

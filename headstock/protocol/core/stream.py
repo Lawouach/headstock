@@ -412,8 +412,6 @@ class ClientStream(component):
                         # unhandled element.
                         self.send(e, "unhandled")
                 
-                #if e.xml_name in ('iq', 'message', 'presence') and e.xml_ns == XMPP_CLIENT_NS:
-                #    e.forget()
                 e = None
                         
             if not self.anyReady():

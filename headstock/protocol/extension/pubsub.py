@@ -4,7 +4,7 @@ from Axon.Component import component
 from Axon.Ipc import shutdownMicroprocess, producerFinished
 from Kamaelia.Chassis.Graphline import Graphline
 
-from bridge.common import XMPP_PUBSUB_NS, XMPP_DISCO_INFO_NS, \
+from bridge.common import XMPP_CLIENT_NS, XMPP_PUBSUB_NS, XMPP_DISCO_INFO_NS, \
      XMPP_DISCO_ITEMS_NS, XMPP_PUBSUB_OWNER_NS, XMPP_PUBSUB_EVENT_NS
 from headstock.api.pubsub import Node, Message
 
@@ -288,7 +288,12 @@ class NodeDeletionDispatcher(component):
             if self.dataReady("inbox"):
                 handled = False
                 a = self.recv("inbox")
-                e = a.xml_parent.xml_parent
+
+                if a.xml_name == 'iq' and a.xml_ns == XMPP_CLIENT_NS:
+                    e = a
+                else:
+                    e = a.xml_parent.xml_parent
+
                 self.send(('INCOMING', e.xml(indent=False, omit_declaration=True)), "log")
                 
                 msg_type = e.get_attribute_value(u'type') or 'get'
@@ -470,7 +475,12 @@ class ItemPublicationDispatcher(component):
             if self.dataReady("inbox"):
                 handled = False
                 a = self.recv("inbox")
-                e = a.xml_parent.xml_parent
+
+                if a.xml_name == 'iq' and a.xml_ns == XMPP_CLIENT_NS:
+                    e = a
+                else:
+                    e = a.xml_parent.xml_parent
+
                 self.send(('INCOMING', e.xml(indent=False, omit_declaration=True)), "log")
                 
                 msg_type = e.get_attribute_value(u'type') or 'get'
@@ -529,7 +539,12 @@ class ItemDeletionDispatcher(component):
             if self.dataReady("inbox"):
                 handled = False
                 a = self.recv("inbox")
-                e = a.xml_parent.xml_parent
+
+                if a.xml_name == 'iq' and a.xml_ns == XMPP_CLIENT_NS:
+                    e = a
+                else:
+                    e = a.xml_parent.xml_parent
+
                 self.send(('INCOMING', e.xml(indent=False, omit_declaration=True)), "log")
                 
                 msg_type = e.get_attribute_value(u'type') or 'get'
