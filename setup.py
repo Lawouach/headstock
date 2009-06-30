@@ -10,7 +10,7 @@ for scheme in INSTALL_SCHEMES.values():
     scheme['data'] = scheme['purelib']
         
 setup(name = "headstock",
-      version = '0.3.0',
+      version = '0.3.1',
       description = "XMPP implementation using the Kamaelia library",
       maintainer = "Sylvain Hellegouarch",
       maintainer_email = "sh@defuze.org",
