@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 
-__version__ = "0.3.2"
+__version__ = "0.4.0"
 __authors__ = ["Sylvain Hellegouarch (sh@defuze.org)"]
-__date__ = "2009/06/30"
 __copyright__ = """
 Copyright (c) 2006, 2007, 2008, 2009 Sylvain Hellegouarch
 All rights reserved.
@@ -31,3 +30,28 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE 
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
+def xmpphandler(name, ns=None, once=False, forget=True):
+    """
+    Decorator to wrap a callable so that it can be used as
+    a XMPP handler by the headstock dispatcher.
+
+    It will set various attributes to the wrapped callable:
+
+    * handler: set to True to indicate the callable can
+               participate to the dispatching
+    * xmpp_local_name: XML element name
+    * xmpp_ns: XML element namespace
+    * fire_once: if True, this handler will be removed
+                 once it has been used.
+    * forget: if set to True, the dispatched element
+              will be automatically deleted once the handler
+              has been called.
+    """
+    def wrapper(func):
+        func.handler = True
+        func.fire_once = once
+        func.forget = forget
+        func.xmpp_local_name = name
+        func.xmpp_ns = ns
+        return func
+    return wrapper
