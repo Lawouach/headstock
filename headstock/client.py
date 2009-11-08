@@ -1,199 +1,4 @@
 # -*- coding: utf-8 -*-
-"""
-=================
-XMPP client usage
-=================
-This modules defines the base XMPP client classes in charge of
-
-* connecting to the XMPP server
-* sending/receiving data to/from the socket stream
-* registering/unregistering handlers from the XML parser
-
-You may use any of the client class as-is or
-inherit from one of them to redefine at will.
-
-Initialize XMPP client and stream
----------------------------------
-The most basic use of the client:
-
-from headstock.client import AsyncClient
-c = AsyncClient(u'user@domain', u'secret', hostname='localhost', port=5222)
-c.set_log(stdout=True)
-c.run()
-
-This will not do much aside from setting
-the XMPP stream up and connect initiate a
-XMPP session with the server.
-
-Note that the `run` method will block. To stop
-a client you may call `stop`.
-
-TLS can be enabled by setting the `tls`
-paremeter to `True`. TLS is provided by the
-`ssl` module.
-
-The default client uses the `asyncore` module to
-perform the socket handling but you may also
-use a Kamaelia or Tornado based client instead.
-
-
-Make your XMPP client receive stanzas
--------------------------------------
-In order to make the client actually do something,
-you must register an instance of a class which
-defines some XMPP handler as follow:
-
-import headstock
-
-class Basic(object):
-    @headstock.xmpphandler('item', XMPP_ROSTER_NS)
-    def roster(self, e):
-        self.client.log("Contact '%s' %s with subscription: %s" % (e.get_attribute_value('name', ''),
-                                                                   e.get_attribute_value('jid', ''),
-                                                                   e.get_attribute_value('subscription', '')))
-
-    @headstock.xmpphandler('presence', XMPP_CLIENT_NS)
-    def presence(self, e):
-        self.client.log("Received '%s' presence from: %s" % (e.get_attribute_value('type', 'available'),
-                                                             e.get_attribute_value('from')))
-
-c.register(Basic())
-
-
-The `xmpphandler` decorator tells the client which
-stanza it expects to receive. It uses qualified name
-of stanzas to do so: local name and namespace.
-
-It also accepts two other parameters allowing to
-unregister the handler once it has been called the
-first time. The other one allows to forget the
-matched stanza once the handler was applied. This
-ensures memory won't grow out of hand.
-
-Note that your handler may return a bridge element which
-will be serialized and sent onto the wire.
-
-To remove an instance from being used, you can call:
-
-c.unregister(inst)
-
-
-Send stanza
------------
-The `xmpphandler` decorator is a one-way track. It tells
-the client where to dispatch incoming stanzas and permits to
-respond to received stanza.
-
-from headstock.lib.utils import generate_unique
-from bridge.common import XMPP_CLIENT_NS
-
-class Basic(object):
-    def ready(self, client):
-        self.client = client
-
-    def message(self, jid, text):
-        m = E(u"message", attributes={u'from': unicode(self.client.jid),
-                                      u'to': unicode(jid), u'type': u'chat',
-                                      u'id': generate_unique()},
-              namespace=XMPP_CLIENT_NS)
-        E(u'body', content=text, namespace=XMPP_CLIENT_NS, parent=m)
-        
-        self.client.send_stanza(m)
-
-b = Basic()
-b.message("somefriend@domain", u"blah blah")
-
-
-The trick to make your class able to use the client
-instance is to declare a `ready(client)` method which will be
-called by the client once the session has been established.
-
-Your class may then keep a reference to the client instance
-provided and use the client API at will, mainly:
-
-    * send_stanza(e)
-    * send_raw_stanza(string)
-
-The first one expects a `bridge.Element` instance whilst
-the other one expects just a string to be sentd as-is on
-the wire. This means you do not have to use bridge to
-generate your stanzas.
-
-
-Register on IQ stanzas based on their type and/or id
-----------------------------------------------------
-In some circumstances you may need to react to a stanza
-like fhe following:
-    <iq id="aab" type="result" />
-
-
-One cannot register a handler using the `xmpphandler`
-decorator to such stanza. Instead you can do this:
-
-    self.client.register_on_iq(somefunc, type="result", id="aab", once=True)
-
-This will call `somefunc(e)` when the appropriate
-stanza is received. Setting the parametre `once`
-ensures it will be unregistered automatically as well.
-
-
-Cleanup resources when client stops
------------------------------------
-Your classes may need to perform some operations when
-the client shuts down. To do so your class must declare
-some methods:
-
-    class Basic(object):
-        def stopping(self):
-            # Called before the socket is closed
-            # unless it was closed by the server
-            # already
-
-        def cleanup(self):
-            # Called after the connection was closed
-
-        def terminated(self):
-            # Called at the very end of the
-            # shutdown process
-
-
-Register your user
-------------------
-In order to register your user you just need to
-set the `registerclass` parameter of the client class
-to a class which subclass the `Register` class.
-
-
-Use a Kamaelia client
----------------------
-
-If you wish to use Kamaelia rather than the default
-client you only need to do:
-
-from headstock.client import KamaeliaClient
-c = KamaeliaClient(u'user@domain', u'secret', hostname='localhost', port=5222)
-c.set_log(stdout=True)
-c.run()
-
-
-Use a Tornado client
---------------------
-
-If you wish to use Kamaelia rather than the default
-client you only need to do:
-
-from headstock.client import TornadoClient
-c = TornadoClient(u'user@domain', u'secret', hostname='localhost', port=5222)
-c.set_log(stdout=True)
-c.run()
-
-If you prefer that the client doesn't start the Tornado
-ioloop itself, use the following instead:
-
-c.run(start_loop=False)
-
-
-"""
 import asyncore
 import inspect
 import socket
@@ -214,6 +19,26 @@ from bridge.parser import DispatchParser
 __all__ = ['BaseClient', 'AsyncClient']
 
 class BaseClient(object):
+    """
+    Defines a high level API by which your application connects to
+    a XMPP server, creates a XMPP stream and sets the XML
+    parser that will dispatch incoming stanzas to XMP handlers.
+
+    You would not create an instance of this directly but
+    use one of its subclass.
+
+    ``jid`` Jabber identifier of the client account. It must at least be
+    a bare jid.
+
+    ``password`` Account's password.
+
+    ``tls`` False - Flag indicating if the client should use TLS should
+    the server support it.
+
+    ``registerclass`` None - Class that will handle the registration process.
+    It should be a subclass of :class:`headstock.register.Register`. The default,
+    `None` means the registration process is not handled by the client.
+    """
     def __init__(self, jid, password, tls=False, registerclass=None):
         self.parser = DispatchParser()
 
@@ -231,6 +56,16 @@ class BaseClient(object):
             self.register(registerclass(self, self.jid.node, password, unicode(self.jid)))
 
     def set_log(self, path=None, stdout=False):
+        """
+        Sets the client's logger. Note that the logger's name is
+        suffixed by the jid's node so that you can create several of them
+        within one single process.
+
+        ``path`` None - Filesystem path to use a file handler for the logger.
+
+        ``stdout`` False - Flag indicating if the logger should output to
+        the standard outpout.
+        """
         self.logger = Logger(path=path, stdout=stdout, name=self.jid.node)
 
     def default_handler(self, e):
@@ -249,6 +84,16 @@ class BaseClient(object):
             self.log(e, 'INCOMING (DEFAULT HANDLER)')
                     
     def log(self, stanza=None, prefix='', traceback=False):
+        """
+        Logs a stanza into its XML serialized form.
+
+        ``stanza`` :class:`bridge.Element` instance to be serialized to a XML string.
+
+        ``prefix`` A string to prefix the line that will be created by the logger.
+
+        ``traceback`` False - Flag indicating the current traceback should be
+        logged.
+        """
         if self.logger:
             if traceback:
                 self.logger.error()
@@ -257,19 +102,72 @@ class BaseClient(object):
                     stanza = stanza.xml(omit_declaration=True, indent=False)
                 self.logger.log('%s %s' % (prefix, stanza))
 
+    def send_stream_header(self):
+        """
+        Sends the initial stream header to the server.
+        """
+        header = self.stream.stream_header()
+        self.send_stanza(header)
+            
     def send_stanza(self, stanza):
+        """
+        Sends a stanza onto the wire by serializing it first to XML.
+
+        ``stanza`` :class:`bridge.Element` instance to be sent.
+        """
         if isinstance(stanza, E):
             stanza = stanza.xml(omit_declaration=True, indent=False)
 
         self.send_raw_stanza(stanza)
 
-    def register_on_iq(self, handler, type=None, id=None, once=False):
+    def register_on_iq(self, handler, type, id, once=False):
+        """
+        Registers a callable as a recipient of a Iq stanza with the
+        provided `type` and/or `id` attributes.
+
+        ``handler`` callable that must accept one single argument,
+        a :class:`bridge.Element` instance.
+
+        ``type`` stanza type to be matched
+
+        ``id`` stanza identifier to be matched
+
+        ``once`` False - Flag indicating if the handler should be
+        unregistered automatically or not once it has been applied.
+        """
         self.iq_handlers.append((id, type, handler, once))
 
     def unregister_from_iq(self, handler, type=None, id=None, once=False):
+        """
+        Unregisters a previously registered callable for a Iq stanza.
+
+        ``handler`` callable that must accept one single argument,
+        a :class:`bridge.Element` instance.
+
+        ``type`` stanza type to be matched
+
+        ``id`` stanza identifier to be matched
+
+        ``once`` False - Flag indicating if the handler should be
+        unregistered automatically or not once it has been applied.
+        """
         self.iq_handlers.remove((id, type, handler, once))
 
     def register(self, handler):
+        """
+        Registers recipients for stanzas by going through the
+        members of the provided `handler` instance. To be taken into
+        account those members must have an attribute called `handler`
+        set to `True` as well as a `xmpp_local_name` indicating
+        which element is expected.
+
+        The actual methods will be wrapped into ``headstock.client.BaseClient.wrap_handler``
+        which will call the method and traps some of the ``headstock.error`` exceptions
+        and act accordingly.
+        
+        ``handler`` instance of an object that defines at least
+        one method with the expected properties.
+        """
         self.handlers.append(handler)
         members = inspect.getmembers(handler, inspect.ismethod)
         for name, member in members:
@@ -286,6 +184,12 @@ class BaseClient(object):
                         self.parser.register_on_element(name, p, member.xmpp_ns)
                     
     def unregister(self, handler):
+        """
+        Unregisters recipents for stanzas.
+        
+        ``handler`` instance of an object that defines at least
+        one method with the expected properties.
+        """
         if handler in self.handlers:
             self.handlers.remove(handler)
             
@@ -302,6 +206,37 @@ class BaseClient(object):
                         self.parser.unregister_on_element(name, member.xmpp_ns)
 
     def wrap_handler(self, e, handler, fire_once, forget):
+        """
+        Wrapper for any registered XMPP handler.
+
+        This traps a few exception:
+
+        * ``headstock.error.HeadstockStartTLS`` when the TLS has been requested and is
+        supported by the server. This then calls ``headstock.client.BaseClient.start_tls``
+        to initiate the TLS negociation.
+
+        * ``headstock.error.HeadstockAuthenticationSuccess`` when the authentication
+        was successful.
+
+        * ``headstock.error.HeadstockSessionBound`` when the session is
+        eventually bound. It automatically sends the initial presence and asks for
+        the account's roster. It also calls ``headstock.client.BaseClient.ready`` so
+        that registered handlers are notified of the bound session.
+
+        ``e`` :class:`bridge.Element` instance that has been dispatched
+        by the XML parser.
+
+        ``handler`` callable applied with the :class:`bridge.Element` instance.
+        If another :class:`bridge.Element` instance is returned, it will
+        be sent to the server.  You may also return a list of :class:`bridge.Element`
+        instances.
+
+        ``fire_once`` flag indicating if the handler should be applied
+        only once or for ever.
+
+        ``forget`` flags indicating if the dispatched :class:`bridge.Element` instance
+        should be forgotten to free memory it uses.
+        """
         self.log(e, 'INCOMING')
         
         if fire_once:
@@ -336,52 +271,99 @@ class BaseClient(object):
     ##########################################
     # Public API to be overriden if needed
     ##########################################
-    def send_stream_header(self):
-        header = self.stream.stream_header()
-        self.send_stanza(header)
-            
     def send_raw_stanza(self, stanza):
+        """
+        Sends a stanza already serialized as a XML string.
+
+        ``stanza`` a stanza serialized as a XML string
+        """
         raise NotImplemented()
 
     def start_tls(self):
+        """
+        Starts the TLS negociation.
+        """
         raise NotImplemented()
 
     def tls_ok(self):
+        """
+        Called when the TLS negociation is successful.
+
+        Reset the XML parser and sends a new stream header.
+        """
         self.parser.reset()
         self.send_stream_header()
 
     def start(self):
+        """
+        Starts the client.
+        """
         pass
 
     def stop(self):
-        ending = self.stream.terminate()
-        self.log(ending, 'OUTGOING')
-        self.send_raw_stanza(ending)
+        """
+        Stops the client by closing the stream.
+        """
+        self.send_raw_stanza(self.stream.terminate())
             
     def socket_error(self, msg=None):
+        """
+        Called whenever the socket was on error.
+        """
         self.log(msg or "Socket Error", 'ERROR')
     
     def ready(self):
+        """
+        Called whenever the session is bound.
+
+        This goes through registered handlers and
+        calls their `ready(client)` method if they
+        declare one. The argument is the client's instance.
+        """
         for handler in self.handlers:
             if hasattr(handler, 'ready'):
                 handler.ready(self)
 
     def stopping(self):
+        """
+        Called whenever the client stops but before
+        the socket is closed (unless it was on error
+        and already closed).
+
+        This goes through registered handlers and
+        calls their `stopping()` method if they
+        declare one.
+        """
         for handler in self.handlers:
             if hasattr(handler, 'stopping'):
                 handler.stopping()
 
     def cleanup(self):
+        """
+        Called after the socket was closed.
+
+        This goes through registered handlers and
+        calls their `cleanup()` method if they
+        declare one.
+        """
         self.log("Cleaning up before terminating the XMPP client")
         for handler in self.handlers:
             if hasattr(handler, 'cleanup'):
                 handler.cleanup()
                 
     def terminated(self):
+        """
+        Called right before the client terminates.
+
+        This goes through registered handlers and
+        calls their `terminated()` method if they
+        declare one and then unregister them.
+        """
         self.log("XMPP client terminated")
         for handler in self.handlers:
             if hasattr(handler, 'terminated'):
                 handler.terminated()
+                self.unregister(handler)
         self.handlers = []
 
 
@@ -402,7 +384,6 @@ class AsyncClient(asyncore.dispatcher, BaseClient):
         self.buffer += stanza
 
     def start_tls(self):
-        assert ssl, "Python 2.6+ and OpenSSL required for SSL"
         self.socket = ssl.wrap_socket(self.socket, server_side=False)
         self.tls_ok()
 
@@ -421,6 +402,12 @@ class AsyncClient(asyncore.dispatcher, BaseClient):
         self.terminated()
 
     def run(self, start_loop=True):
+        """
+        Starts the client.
+
+        ``start_loop`` True - flag indicating if the
+        :func:`asyncore.loop` function should be called too.
+        """
         header = self.stream.stream_header()
         self.send_raw_stanza(header)
         
@@ -462,14 +449,14 @@ if HAS_KAMAELIA:
     __all__.append("KamaeliaClient")
     
     class KamaeliaClient(component, BaseClient):
-        Inboxes = {"inbox"      : "",
+        Inboxes = {"inbox"      : "Incoming data read from the socket",
                    "tcp-control": "Errors bubbling up from the TCPClient component",
-                   "tlssuccess" : "",
+                   "tlssuccess" : "If the TLS exchange has succeeded",
                    "control"    : "Shutdown the client stream"}
 
         Outboxes = {"outbox"  : "",
                     "signal"  : "Shutdown signal",
-                    "starttls": ""}
+                    "starttls": "Initiates the TLS negociation"}
 
         def __init__(self, jid, password, hostname='localhost', port=5222, tls=False, register=False):
             super(KamaeliaClient, self).__init__()
@@ -492,6 +479,9 @@ if HAS_KAMAELIA:
             self.send('', 'starttls')
 
         def start(self):
+            """
+            Starts the client by activating the component.
+            """
             self.activate()
 
         def stop(self):
@@ -663,6 +653,12 @@ if HAS_TORNADO:
             self.terminated()
 
         def run(self, start_loop=True):
+            """
+            Starts the client.
+            
+            ``start_loop`` True - flag indicating if the
+            :func:`ioloop.IOLoop.start` method should be called too.
+            """
             header = self.stream.stream_header()
             self.send_raw_stanza(header)
             

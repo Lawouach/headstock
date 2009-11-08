@@ -1,4 +1,12 @@
 # -*- coding: utf-8 -*-
+"""
+===========
+XMPP stream
+===========
+The XMPP stream handling in headstock is performed by the
+`Stream` module. This should be considered a private module
+instanciated by the main client class.
+"""
 
 from bridge import Element as E
 from bridge import Attribute as A

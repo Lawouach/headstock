@@ -8,6 +8,18 @@ from sys import exc_info as _exc_info
 __all_ = ['Logger']
 
 class Logger(object):
+    """
+    Creates a file handler and/or a console handler for logging.
+
+    This module uses the builtin :mod:`logging` module.
+
+    ``path`` None - filesystem path to which associate a logging file handler
+
+    ``stdout`` False - flag indicating if the console handler
+    should be enabled.
+
+    ``name`` internal name for the logger
+    """
     def __init__(self, path=None, stdout=False, name=None):
         self.path = path
         self.with_stdout = stdout
@@ -36,14 +48,23 @@ class Logger(object):
 
         self.logger = logger
 
-    def log(self, m, traceback=False):
+    def log(self, m):
+        """
+        Logs a string ``m``
+        """
         self.logger.debug(m)
 
     def error(self):
+        """
+        Logs the current exception info
+        """
         exc = _exc_info()
         self.logger.error("".join(_traceback.format_exception(*exc)))
 
     def close(self):
+        """
+        Closes the logger and its handlers.
+        """
         for handler in self.logger.handlers:
             handler.close()
             logger.removeHandler(handler)

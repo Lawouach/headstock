@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-
 __version__ = "0.4.0"
 __authors__ = ["Sylvain Hellegouarch (sh@defuze.org)"]
 __copyright__ = """
@@ -30,22 +29,32 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE 
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-def xmpphandler(name, ns=None, once=False, forget=True):
+
+__all__ = ['xmpphandler']
+
+def xmpphandler(name, ns, once=False, forget=True):
     """
     Decorator to wrap a callable so that it can be used as
-    a XMPP handler by the headstock dispatcher.
+    a XMPP handler by the headstock client.
 
     It will set various attributes to the wrapped callable:
 
-    * handler: set to True to indicate the callable can
-               participate to the dispatching
+    * handler: set to `True` to indicate the callable can participate to the dispatching
     * xmpp_local_name: XML element name
     * xmpp_ns: XML element namespace
-    * fire_once: if True, this handler will be removed
-                 once it has been used.
-    * forget: if set to True, the dispatched element
-              will be automatically deleted once the handler
-              has been called.
+    * fire_once: if `True`, this handler will be removed once it has been used.
+    * forget: if set to `True`, the dispatched element will be automatically deleted once the handler has been called.
+
+    ``name`` XMPP stanza name
+
+    ``ns`` XMPP stanza namespace
+
+    ``once`` False - flag indicating if the handler should
+    be called only once and unregistered automatically
+
+    ``forget`` True - flag indicating if the dispatched
+    :class:`bridge.Element` instance should be automatically
+    forgotten once dispatched.
     """
     def wrapper(func):
         func.handler = True

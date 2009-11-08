@@ -7,18 +7,34 @@ except ImportError:
 from time import time
 from random import random
 
-
-__all__ = ['generate_unique', 'remove_BOM', 'compute_handshake']
+__all__ = ['generate_unique', 'remove_BOM',
+           'compute_handshake', 'parse_commandline']
 
 def generate_unique(seed=None):
+    """
+    Generates a random and pseudo-unique string.
+
+    ``seed`` None - if `None` the seed is generated
+    from the current time and a random value.
+    """
     if not seed:
         seed = str(time() * random())
     return unicode(abs(hash(sha(seed).hexdigest())))
 
 def compute_handshake(stanza_id, secret):
+    """
+    Computes the SASL handshake
+
+    ``stanza_id`` stanza identifier
+
+    ``secret`` the secret value to be hashed with the stanza identifier.
+    """
     return unicode(sha(str(stanza_id) + str(secret)).hexdigest().lower())
 
 def remove_BOM(text):
+    """
+    Removes the BOM from the provided `text`.
+    """
     if codecs.BOM_UTF8.decode("utf-8") in text:
         return text.replace(codecs.BOM_UTF8.decode("utf-8"), '')
     if codecs.BOM.decode("utf-16") in text:
@@ -31,6 +47,10 @@ def remove_BOM(text):
     return text
 
 def parse_commandline():
+    """
+    Helper to parse the command line. Useful for quick
+    client mockup.
+    """
     from optparse import OptionParser
     parser = OptionParser()
     parser.add_option("-a", "--address", dest="address", action="store",
