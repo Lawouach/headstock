@@ -1,5 +1,5 @@
 """
-XMPP implementation using the Kamaelia library
+XMPP library
 """
 
 #from distutils.core import setup
@@ -11,7 +11,7 @@ for scheme in INSTALL_SCHEMES.values():
         
 setup(name = "headstock",
       version = '0.4.0',
-      description = "XMPP implementation using the Kamaelia library",
+      description = "XMPP library",
       maintainer = "Sylvain Hellegouarch",
       maintainer_email = "sh@defuze.org",
       url = "http://trac.defuze.org/wiki/headstock",
@@ -19,7 +19,7 @@ setup(name = "headstock",
       packages = ["headstock", "headstock.lib", "headstock.lib.auth"],
       platforms = ["any"],
       license = 'BSD',
-      long_description = "XMPP implementation using the Kamaelia library",
+      long_description = "XMPP library",
       install_requires= ['bridge>=0.4.0'],
       zip_safe=False
      )
