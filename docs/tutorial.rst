@@ -9,6 +9,22 @@ you through the various aspects of the library.
 First make sure you have followed the :ref:`getting_started` guide
 prior to go through this tutorial.
 
+Goals
+=====
+
+The main idea behind headstock is not to provide a complete API
+mapping the XMPP specifications but to offer a very basic
+set of tools to:
+
+* handle the connection
+* create the XMPP stream
+* deal with incoming stanzas with as little overhead
+on your application as possible
+
+It tries to act as library rather than a framework 
+as much as possible.
+
+
 Initialize the XMPP client and stream
 =====================================
 The most basic use of the client:
