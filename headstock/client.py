@@ -368,11 +368,11 @@ class BaseClient(object):
 
 
 class AsyncClient(asyncore.dispatcher, BaseClient):
-    def __init__(self, jid, password, hostname='localhost', port=5222, tls=False, register=False):
+    def __init__(self, jid, password, hostname='localhost', port=5222, tls=False, registercls=None):
         asyncore.dispatcher.__init__(self)
         delattr(asyncore.dispatcher, 'log')
         
-        BaseClient.__init__(self, jid, password, tls, register)
+        BaseClient.__init__(self, jid, password, tls, registercls)
         
         self.buffer = ""
 
@@ -458,9 +458,9 @@ if HAS_KAMAELIA:
                     "signal"  : "Shutdown signal",
                     "starttls": "Initiates the TLS negociation"}
 
-        def __init__(self, jid, password, hostname='localhost', port=5222, tls=False, register=False):
+        def __init__(self, jid, password, hostname='localhost', port=5222, tls=False, registercls=None):
             super(KamaeliaClient, self).__init__()
-            BaseClient.__init__(self, jid, password, tls, register)
+            BaseClient.__init__(self, jid, password, tls, registercls)
 
             self.graph = Graphline(client = self,
                                    tcp = TCPClient(hostname, port),
@@ -608,8 +608,8 @@ if HAS_TORNADO:
             callback(self._consume(len(self._read_buffer)))
 
     class TornadoClient(BaseClient):
-        def __init__(self, jid, password, hostname='localhost', port=5222, tls=False, register=False):
-            BaseClient.__init__(self, jid, password, tls, register)
+        def __init__(self, jid, password, hostname='localhost', port=5222, tls=False, registercls=None):
+            BaseClient.__init__(self, jid, password, tls, registercls)
             
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
             s.connect((hostname, port))
