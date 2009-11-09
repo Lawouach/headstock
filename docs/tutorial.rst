@@ -18,8 +18,7 @@ set of tools to:
 
 * handle the connection
 * create the XMPP stream
-* deal with incoming stanzas with as little overhead
-on your application as possible
+* deal with incoming stanzas with as little overhead on your application as possible
 
 It tries to act as library rather than a framework 
 as much as possible.
