@@ -11,6 +11,8 @@ headstock Modules
    client
    register
    stream
+   stanza
+   jid
    error
    logger
    util

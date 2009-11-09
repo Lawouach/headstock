@@ -12,13 +12,27 @@ except ImportError:
 _r_jid = re.compile(u'(?:([\x29\x23-\x25\x28-\x2E\x30-\x39\x3B\x3D\x3F\x41-\x7E]{1,1023})\@)?([a-zA-Z0-9\.\-]{1,1023})(?:/(.{1,1023}))?', re.UNICODE)
 
 class JID(object):
+    """
+    Jabber Identifier helper class.
+
+    ``node`` JID node part
+
+    ``domain`` JID domain part
+
+    ``resource`` None - JID resource
+    """
     def __init__(self, node, domain, resource=None):
         self.node = node
         self.domain = domain
         self.resource = resource
 
-    @classmethod
-    def parse(cls, token):
+    @staticmethod
+    def parse(token):
+        """
+        Parses a string representing a JID and returns
+        an instance of :class:`headstock.lib.jid.JID` or
+        `None` if it failed.
+        """
         if not token:
             return
         m = _r_jid.match(token)
@@ -58,4 +72,7 @@ class JID(object):
       
     @property
     def hashed(self):
+        """
+        Returns a sha1 hash of of the JID.
+        """
         return HASH(str(self))

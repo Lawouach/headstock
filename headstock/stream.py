@@ -28,13 +28,20 @@ from headstock.lib.auth.digest import challenge_to_dict, compute_digest_response
 __all__ = ['Stream']
 
 class Stream(object):
-    def __init__(self, jid, password, tls=False, register=False):
-        """
-        A client stream is the interface between a remote XMPP service
-        and the client. It handles the connection and authentication.
+    """
+    A client stream is the interface between a remote XMPP service
+    and the client. It handles the connection and authentication.
+    
+    ``jid`` :class:`headstock.protocol.core.jid.JID` instance
 
-        The ``jid`` parameter is an instance of headstock.protocol.core.jid.JID.  
-        """
+    ``password`` account's password
+
+    ``tls`` False - flag indicating if the stream runs over a TLS connection
+
+    ``register`` False - flag indicating if the registration was
+    requested.
+    """
+    def __init__(self, jid, password, tls=False, register=False):
         self.jid = jid
         self.password = password
 
@@ -42,18 +49,43 @@ class Stream(object):
         self.use_tls = tls
 
     def stream_header(self):
+        """
+        Creates and returns a stream header string
+        """
         return '<stream:stream xmlns:stream="%s" xmlns="jabber:client" version="1.0" to="%s">' % (XMPP_STREAM_NS,
                                                                                                   self.jid.domain)
 
     def terminate(self):
+        """
+        Creates and returns the closing tag of the stream along with
+        the unavailable presence stanza.
+        """
         return '<presence type="unavailable" /></stream:stream>'
         
     @xmpphandler('error', XMPP_STREAM_NS)
     def handle_error(self, e):
+        """
+        XMPP handler whenever a stream error is returned.
+
+        Raises a :class:`headstock.error.HeadstockStreamError` instance
+        which will be trapped by the client.
+        """
         raise HeadstockStreamError()
     
     @xmpphandler('features', XMPP_STREAM_NS)
     def handle_features(self, e):
+        """
+        XMPP handler for stream features.
+
+        It will:
+
+        * return immediatly if the element has no children.
+        * initiates the TLS negociation (from the stream point
+        of view) if `self.tls` is `True` and the feature has a
+        `<starttls /> child.
+        * initiates the authentication based on the supported
+        mechanisms or abort if none is found.        
+        """
         if not e.xml_children:
             return
         
@@ -104,14 +136,27 @@ class Stream(object):
                  namespace=XMPP_SASL_NS)
 
     def handle_tls(self):
+        """
+        Resets the stream header.
+        """
         self._send_stream_header()
 
     @xmpphandler('proceed', XMPP_TLS_NS, once=True)
     def proceed_tls(self, e):
+        """
+        TLS negociation was successful.
+
+        Raises a :class:`headstock.error.HeadstockStartTLS` instance
+        handled by the client.
+        """
         raise HeadstockStartTLS()
 
     @xmpphandler('challenge', XMPP_SASL_NS)
     def handle_challenge(self, e):
+        """
+        Handles the authentication by computing the
+        challenge for the provided credentials.
+        """
         response_token = None
         params = challenge_to_dict(e.xml_text)
         # Handling 'rspauth' token in DIGEST-MD5
@@ -126,10 +171,20 @@ class Stream(object):
 
     @xmpphandler('success', XMPP_SASL_NS, once=True)
     def handle_authenticated(self, e):
+        """
+        Authentication successful
+
+        Raises a :class:`headstock.error.HeadstockAuthenticationSuccess` instance
+        handled by the client.
+        """
         raise HeadstockAuthenticationSuccess()
 
     @xmpphandler('bind', XMPP_BIND_NS, once=True)
     def handle_binding(self, e):
+        """
+        Handle the JID binding request by returning
+        the full JID.
+        """
         iq = Stanza.set_iq(stanza_id=generate_unique())
         bind = E(u'bind', namespace=XMPP_BIND_NS, parent=iq)
         if self.jid.resource != None:
@@ -140,6 +195,16 @@ class Stream(object):
 
     @xmpphandler('session', XMPP_SESSION_NS)
     def handle_session(self, e):
+        """
+        Handles the session elements received by the server.
+
+        If the type of the response is `result` it raises
+        :class:`headstock.error.HeadstockAuthenticationSuccess` instance
+        handled by the client indicating the session is ready.
+
+        Otherwise returns the session stanza indicating the
+        client wishes to start a session.
+        """
         if e.xml_parent and e.xml_parent.get_attribute_value('type') == 'result':
             raise HeadstockSessionBound()
         
@@ -150,12 +215,22 @@ class Stream(object):
 
     @xmpphandler('jid', XMPP_BIND_NS, once=True)
     def handle_jid(self, e):
+        """
+        Parses the bound JID and sets it to the stream.
+        """
         self.jid = JID.parse(e.xml_text)
         
     def notify_presence(self):
+        """
+        Creates and returns a presence stanza as a
+        :class:`bridge.Element` instance.
+        """
         return Stanza.to_element(Stanza(u'presence'))
 
     def ask_roster(self):
+        """
+        Creates and returns the IQ stanza to query the entity's roster.
+        """
         iq = Stanza.get_iq(from_jid=unicode(self.jid), stanza_id=generate_unique())
         E(u'query', namespace=XMPP_ROSTER_NS, parent=iq)   
 
