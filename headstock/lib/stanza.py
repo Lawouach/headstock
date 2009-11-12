@@ -61,7 +61,8 @@ class Stanza(object):
         if e.stanza_id:
             attributes[u'id'] = e.stanza_id
             
-        stanza = E(e.stanza, attributes=attributes, parent=parent)
+        stanza = E(e.stanza, attributes=attributes, namespace=XMPP_CLIENT_NS,
+                   parent=parent)
         
         if e.lang:
             A(u'lang', value=e.lang, prefix=XML_PREFIX,

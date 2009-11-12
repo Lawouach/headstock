@@ -42,6 +42,8 @@ class BaseClient(object):
     def __init__(self, jid, password, tls=False, registerclass=None):
         self.parser = DispatchParser()
 
+        self.running = False
+
         self.handlers = []
         self.iq_handlers = []
         
@@ -205,6 +207,36 @@ class BaseClient(object):
                     for name in local_name:
                         self.parser.unregister_on_element(name, member.xmpp_ns)
 
+    def unregister_all(self):
+        """
+        Unregisters all previously registered handler.
+
+        Note that this is done automatically when `terminated` is called.
+        """
+        for handler in self.handlers:
+            self.unregister(handler)
+        
+    def swap_handler(self, new_handler, name, ns, once=False, forget=True):
+        """
+        Swap an existing handler with a new one.
+
+        ``new_handler`` callable to use from now on. It must accept
+        a :class:`bridge.Element` instance as its argument.
+
+        ``name`` stanza name
+
+        ``ns`` stanza namespace
+
+        ``once`` False - flag indicating if the handler should be
+        unregistered automatically once it has been called
+
+        ``forget`` True - flag indicating if the dispatched stanza
+        should be removed from memory once the handler has been called
+        """
+        self.parser.unregister_on_element(name, ns)
+        p = partial(self.wrap_handler, handler=new_handler, fire_once=once, forget=forget)
+        self.parser.register_on_element(name, p, ns)
+
     def wrap_handler(self, e, handler, fire_once, forget):
         """
         Wrapper for any registered XMPP handler.
@@ -298,7 +330,7 @@ class BaseClient(object):
         """
         Starts the client.
         """
-        pass
+        self.running = True
 
     def stop(self):
         """
@@ -320,6 +352,7 @@ class BaseClient(object):
         calls their `ready(client)` method if they
         declare one. The argument is the client's instance.
         """
+        self.running = True
         for handler in self.handlers:
             if hasattr(handler, 'ready'):
                 handler.ready(self)
@@ -334,6 +367,7 @@ class BaseClient(object):
         calls their `stopping()` method if they
         declare one.
         """
+        self.running = False
         for handler in self.handlers:
             if hasattr(handler, 'stopping'):
                 handler.stopping()
@@ -366,11 +400,15 @@ class BaseClient(object):
                 self.unregister(handler)
         self.handlers = []
 
+        if self.logger:
+            self.logger.close()
+            self.logger = None
+
 
 class AsyncClient(asyncore.dispatcher, BaseClient):
     def __init__(self, jid, password, hostname='localhost', port=5222, tls=False, registercls=None):
         asyncore.dispatcher.__init__(self)
-        delattr(asyncore.dispatcher, 'log')
+        #delattr(asyncore.dispatcher, 'log')
         
         BaseClient.__init__(self, jid, password, tls, registercls)
         
@@ -379,6 +417,9 @@ class AsyncClient(asyncore.dispatcher, BaseClient):
         self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
         self.connect((hostname, port))
 
+    def log(self, stanza=None, prefix='', traceback=False):
+        BaseClient.log(self, stanza, prefix, traceback)
+        
     def send_raw_stanza(self, stanza):
         BaseClient.log(self, stanza, 'OUTGOING')
         self.buffer += stanza
@@ -388,6 +429,7 @@ class AsyncClient(asyncore.dispatcher, BaseClient):
         self.tls_ok()
 
     def start(self):
+        self.running = True
         self.run(start_loop=False)
         
     def stop(self):
@@ -482,6 +524,7 @@ if HAS_KAMAELIA:
             """
             Starts the client by activating the component.
             """
+            self.running = True
             self.activate()
 
         def stop(self):
@@ -634,6 +677,7 @@ if HAS_TORNADO:
             self.tls_ok()
 
         def start(self):
+            self.running = True
             self.run(start_loop=False)
             
         def stop(self, stop_loop=False):

@@ -66,5 +66,8 @@ class Logger(object):
         Closes the logger and its handlers.
         """
         for handler in self.logger.handlers:
-            handler.close()
-            logger.removeHandler(handler)
+            try:
+                handler.close()
+            except KeyError:
+                pass
+            self.logger.removeHandler(handler)
