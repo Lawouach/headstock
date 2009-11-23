@@ -74,13 +74,16 @@ class BaseClient(object):
         handled = False
         if e.xml_name == u'iq':
             for stanza_id, stanza_type, handler, once in self.iq_handlers:
-                if e.get_attribute_value('type') == stanza_type:
-                    if e.get_attribute_value('id') == stanza_id:
-                        handled = True
-                        if once:
-                            self.unregister_from_iq(handler, stanza_type,
-                                                    stanza_id, once)
-                        self.wrap_handler(e, handler, once, True)
+                if stanza_type and e.get_attribute_value('type') != stanza_type:
+                    continue
+                if stanza_id and e.get_attribute_value('id') != stanza_id:
+                    continue
+
+                handled = True
+                if once:
+                    self.unregister_from_iq(handler, stanza_type,
+                                            stanza_id, once)
+                    self.wrap_handler(e, handler, once, True)
 
         if not handled:
             self.log(e, 'INCOMING (DEFAULT HANDLER)')
@@ -122,7 +125,7 @@ class BaseClient(object):
 
         self.send_raw_stanza(stanza)
 
-    def register_on_iq(self, handler, type, id, once=False):
+    def register_on_iq(self, handler, type=None, id=None, once=False):
         """
         Registers a callable as a recipient of a Iq stanza with the
         provided `type` and/or `id` attributes.
@@ -130,9 +133,9 @@ class BaseClient(object):
         ``handler`` callable that must accept one single argument,
         a :class:`bridge.Element` instance.
 
-        ``type`` stanza type to be matched
+        ``type`` None - stanza type to be matched
 
-        ``id`` stanza identifier to be matched
+        ``id`` None - stanza identifier to be matched
 
         ``once`` False - Flag indicating if the handler should be
         unregistered automatically or not once it has been applied.
