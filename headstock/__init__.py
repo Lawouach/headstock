@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-__version__ = "0.4.0"
+__version__ = "0.4.1"
 __authors__ = ["Sylvain Hellegouarch (sh@defuze.org)"]
 __copyright__ = """
 Copyright (c) 2006, 2007, 2008, 2009 Sylvain Hellegouarch
