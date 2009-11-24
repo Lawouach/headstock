@@ -35,15 +35,35 @@ def get_element_paths(element):
         yield path + '[@%s="%s"]' % (attr.xml_name, attr.xml_text or '')
 
 class CotManager(object):
+    """
+    Represents a set of stanzas loaded from
+    cot scripts.
+
+    >>> m = CotManager()
+    >>> m.add_cot_script(path)
+    >>> for cot in m.stanzas:
+    >>>     for (stanza_id, stanza_type) in cot[0]:
+    >>>         for stanza in cot[0][(stanza_id, stanza_type)]
+    >>>             # do something with the stanza
+    >>>             # send the stanza
+    """
     def __init__(self):
         self._stanzas = []
 
     @property
     def stanzas(self):
+        """
+        Generator that will yield each managed
+        stanza one by one.
+        """
         for stanza in self._stanzas:
             yield stanza
             
     def add_cot_script(self, cot_script):
+        """
+        Loads a new cot script and adds it to the pool
+        of managed stanza.
+        """
         stanzas = CotScript.load(cot_script)
         self._stanzas = itertools.chain(self._stanzas, stanzas)
 
@@ -79,6 +99,20 @@ EXPECT_MODE = 1
 class CotScript(object):
     @staticmethod
     def load(path):
+        """
+        Loads a cot script given by ``path`` and returns the parsed
+        stanzas as a list of dictionaries.
+
+        The dictionnaries have two numeric keys:
+
+        * 0 which represents the stanzas to be sent
+        * 1 representing the expected stanzas
+
+        The values of the dictionnaries are also dictionaries
+        with keys being tuples (stanza_id, stanza_type). For each
+        key the associated value is a list of `bridge.Element` instances,
+        each representing a stanza.
+        """
         script = file(path, 'r')
         
         mode = SEND_MODE
@@ -132,6 +166,24 @@ class CotScript(object):
         return stanzas
 
 class Cot(object):
+    """
+    Handler sending stanzas parsed from a set of
+    cot scripts.
+
+    The handler will register to tha ``main`` channel of the
+    bus to:
+
+    * send a stanza if not processing one yet
+    * check if a stanza has been sent and if the expected
+    stanzas have been validated otherwise times out that
+    stanza and send the next one.
+
+    ``bus`` a ``cherrypy.lib.process.wspbus.Bus`` instance.
+
+    ``scripts`` a list of filenames to parse and read from
+
+    ``timeout`` duration before an expected sranza is considered to have timed out.
+    """
     def __init__(self, bus, scripts, timeout=5.0):
         self.bus = bus
         self.client = None
@@ -154,30 +206,52 @@ class Cot(object):
         self.current_test_name = None
         
     def ready(self, client):
+        """
+        Keeps a reference to the client instance
+        when its session has been created.
+
+        Subscribes to the ``main`` channel of the bus.
+        """
         self.client = client
         self.bus.subscribe("main", self._process)
 
     def stopping(self):
+        """
+        Unsubscribes from the ``main`` channel of the bus.
+        """
         self.bus.unsubscribe("main", self._process)
-
-    def cleanup(self):
-        pass
-
-    def terminated(self):
-        import pprint
-        pprint.pprint(self.results)
 
     @property
     def hostname(self):
+        """
+        Returns the client domain.
+        """
         if self.client:
             return self.client.jid.domain
 
     def _process(self):
+        """
+        Performs several operations.
+
+        If currently processing a stanza, it checks
+        if the expected responses have been received or if
+        they haven't within the allowed timeout.
+
+        In case of a timeout, it fails the current exchange
+        so that a new one can start.
+
+        If not processing, it gets the next available
+        stanzas to be sent and expected. Then it sends
+        the next available stanza.
+
+        When all available stanzas have been consumed,
+        it unsubscribe from the ``main`` channel of the bus.
+        """
         try:
             if self.processing:
                 now = time.time()
                 if now > self._last + self.timeout:
-                    self.results.append(('fail', self.current_test_name,
+                    self.results.append(('timeout', self.current_test_name,
                                          now - self._last))
                     self._last = 0
                     self.current = None
@@ -202,6 +276,10 @@ class Cot(object):
             self.bus.log(traceback=True)
                 
     def _next(self):
+        """
+        Sends the next available stanza and register
+        the `_handle_response` method to each expected stanza.
+        """
         self._last = 0
         self.processing = True
         
@@ -221,6 +299,14 @@ class Cot(object):
         self.client.send_stanza(e)
             
     def _handle_response(self, e):
+        """
+        Called whenever a stanza matches a registered
+        stanza id and type pair.
+
+        When all registered stanzas have been received,
+        it sets the state of the handler so that the next
+        round of stanzas can be sent.
+        """
         now = time.time()
         try:
             stanza_id = e.get_attribute_value('id')
@@ -251,14 +337,3 @@ class Cot(object):
             self.bus.log(traceback=True)
 
             
-if __name__ == '__main__':
-    import sys, pprint
-    pprint.pprint(CotScript().load(sys.argv[1]))
-
-    manager = CotManager()
-    manager.add_cot_script(sys.argv[1])
-
-    for s in manager.stanzas:
-        print s.xml()
-
-    print manager.report()
