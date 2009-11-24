@@ -17,6 +17,7 @@ Tutorials
 
    tutorial
    client
+   cot
 
 Module Listing
 --------------

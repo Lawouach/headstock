@@ -16,3 +16,4 @@ headstock Modules
    error
    logger
    util
+   cot

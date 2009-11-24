@@ -16,7 +16,7 @@ client you only need to do:
 Tornado client
 ==============
 
-If you wish to use Kamaelia rather than the default
+If you wish to use Tornado rather than the default
 client you only need to do:
 
 .. code-block :: python 
