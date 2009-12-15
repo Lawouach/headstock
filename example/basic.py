@@ -54,7 +54,7 @@ if __name__ == '__main__':
     from headstock.client import AsyncClient
     c = AsyncClient(unicode(options.jid), unicode(options.password),
                     hostname=host, port=int(port), tls=options.usetls,
-                    register=registercls)
+                    registercls=registercls)
     c.set_log(stdout=True)
     
     c.register(Basic())
