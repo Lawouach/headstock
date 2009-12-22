@@ -3,7 +3,7 @@
 __all__ = ['HeadstockError', 'HeadstockInvalidError', 
            'HeadstockStreamError', 'HeadstockAuthenticationFailure',
            'HeadstockInvalidStanzaError', 'HeadstockAuthenticationSuccess',
-           'HeadstockSessionBound', 'HeadstockStartTLS']
+           'HeadstockSessionBound', 'HeadstockStartTLS', 'HeadstockAvailable']
 
 class HeadstockError(StandardError):
     pass
@@ -27,4 +27,7 @@ class HeadstockSessionBound(HeadstockError):
     pass
 
 class HeadstockStartTLS(HeadstockError):
+    pass
+
+class HeadstockAvailable(HeadstockError):
     pass

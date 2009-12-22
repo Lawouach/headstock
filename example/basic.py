@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import headstock
 from headstock.lib.stanza import Stanza
+from headstock.error import HeadstockAvailable
 from bridge import Element as E
 from bridge import Attribute as A
 from bridge.common import XMPP_CLIENT_NS, XMPP_ROSTER_NS
@@ -20,6 +21,8 @@ class Basic(object):
 
     @headstock.xmpphandler('presence', XMPP_CLIENT_NS)
     def presence(self, e):
+        if not e.get_attribute_value("from"):
+            raise HeadstockAvailable()
         self.client.log("Received '%s' presence from: %s" % (e.get_attribute_value('type', 'available'),
                                                              e.get_attribute_value('from')))
 

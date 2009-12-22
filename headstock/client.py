@@ -10,7 +10,8 @@ from headstock.lib.jid import JID
 from headstock.register import Register
 from headstock.lib.logger import Logger
 from headstock.error import HeadstockAuthenticationSuccess, \
-     HeadstockSessionBound, HeadstockStartTLS, HeadstockStreamError
+     HeadstockSessionBound, HeadstockStartTLS,\
+     HeadstockStreamError, HeadstockAvailable
 from headstock.stream import Stream
 
 from bridge import Element as E
@@ -288,6 +289,7 @@ class BaseClient(object):
         except HeadstockSessionBound:
             self.jid = self.stream.jid
             self.send_stanza(self.stream.notify_presence())
+        except HeadstockAvailable:
             self.send_stanza(self.stream.ask_roster())
             self.unregister(self.stream)
             self.ready()
@@ -345,7 +347,7 @@ class BaseClient(object):
         """
         Called whenever the socket was on error.
         """
-        self.log(msg or "Socket Error", 'ERROR')
+        self.log(traceback=True)
     
     def ready(self):
         """

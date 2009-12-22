@@ -17,7 +17,7 @@ from bridge.common import XML_NS, XML_PREFIX, XMPP_CLIENT_NS, XMPP_STREAM_NS, XM
 
 from headstock import xmpphandler
 from headstock.error import HeadstockStartTLS, HeadstockAuthenticationSuccess, \
-     HeadstockSessionBound
+     HeadstockSessionBound, HeadstockAvailable
 from headstock.lib.stanza import Stanza
 from headstock.lib.utils import generate_unique
 from headstock.lib.jid import JID
@@ -226,6 +226,10 @@ class Stream(object):
         :class:`bridge.Element` instance.
         """
         return Stanza.to_element(Stanza(u'presence'))
+
+    @xmpphandler('presence', XMPP_CLIENT_NS)
+    def handle_presence(self, e):
+        raise HeadstockAvailable()
 
     def ask_roster(self):
         """
