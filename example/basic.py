@@ -21,7 +21,7 @@ class Basic(object):
 
     @headstock.xmpphandler('presence', XMPP_CLIENT_NS)
     def presence(self, e):
-        if not e.get_attribute_value("from"):
+        if not hasattr(self, "client"):
             raise HeadstockAvailable()
         self.client.log("Received '%s' presence from: %s" % (e.get_attribute_value('type', 'available'),
                                                              e.get_attribute_value('from')))
