@@ -54,7 +54,7 @@ if __name__ == '__main__':
         from headstock.register import Register
         registercls = Register
     
-    from headstock.client import AsyncClient
+    from headstock.client import AsyncClient#, CircuitsClient, TornadoClient, KamaeliaClient
     c = AsyncClient(unicode(options.jid), unicode(options.password),
                     hostname=host, port=int(port), tls=options.usetls,
                     registercls=registercls)
