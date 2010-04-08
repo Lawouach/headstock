@@ -83,6 +83,9 @@ class PubSub(object):
     def entry(self, e):
         print e.get_child('title', ns=ATOM10_NS).xml_text
 
+    @headstock.xmpphandler('message', XMPP_CLIENT_NS)
+    def message(self, e):
+        pass
 
 if __name__ == '__main__':
     from headstock.lib.utils import parse_commandline
