@@ -730,3 +730,75 @@ if HAS_TORNADO:
       
         def _read(self):
             self.io.read_bytes(4096, self.handle_read)
+
+try:
+    from circuits import Component
+    from circuits.net.sockets import TCPClient, Connect
+    from circuits.net.sockets import Write, Close
+    from circuits.core import handler
+    HAS_CIRCUITS = True
+except ImportError:
+    HAS_CIRCUITS = False
+
+if HAS_CIRCUITS:
+    class XMPPComponent(Component):
+        def __init__(self, xmpp_client, hostname, port):
+            Component.__init__(self)
+            self.client = xmpp_client
+            
+            self.tcp = TCPClient()
+            self += self.tcp
+            self.push(Connect(hostname, port))
+
+        def close(self):
+            self.push(Close())
+            
+        def send(self, data):
+            self.push(Write(data))
+            
+        @handler("read")
+        def handle_read(self, data):
+            try:
+                self.client.parser.feed(data)
+            except SAXParseException, exc:
+                self.client.log(traceback=True)
+      
+    class CircuitsClient(BaseClient):
+        def __init__(self, jid, password, hostname='localhost',
+                     port=5222, tls=False, registercls=None):
+            BaseClient.__init__(self, jid, password, tls, registercls)
+            # I would have rathered subclass Component here
+            # but it won't allow me to set attributes afterwards
+            # due to Circuits pretty strict __metaclass__
+            self.c = XMPPComponent(self, hostname, port)
+
+        def send_raw_stanza(self, stanza):
+            self.log(stanza, 'OUTGOING')
+            self.c.send(stanza)
+
+        def start_tls(self):
+            assert ssl, "Python 2.6+ and OpenSSL required for SSL"
+            # not really clean to access internals like that
+            # but I couldn't find a better way to do it
+            self.c.tcp._sock = ssl.wrap_socket(self.c.tcp._sock, server_side=False)
+            self.tls_ok()
+
+        def start(self):
+            self.running = True
+            self.run()
+            
+        def stop(self):
+            self.stopping()
+            
+            if not self.c.tcp.connected():
+                self.c.close()
+                BaseClient.stop(self)
+
+            self.cleanup()
+            self.terminated()
+
+        def run(self):
+            header = self.stream.stream_header()
+            self.send_raw_stanza(header)
+            self.c.run()
+            
