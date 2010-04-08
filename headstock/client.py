@@ -2,7 +2,10 @@
 import asyncore
 import inspect
 import socket
-import ssl
+try:
+    import ssl
+except ImportError:
+    ssl = None
 from functools import partial
 from xml.sax import SAXParseException
 
@@ -430,6 +433,7 @@ class AsyncClient(asyncore.dispatcher, BaseClient):
         self.buffer += stanza
 
     def start_tls(self):
+        assert ssl, "Python 2.6+ and OpenSSL required for SSL"
         self.socket = ssl.wrap_socket(self.socket, server_side=False)
         self.tls_ok()
 
@@ -463,6 +467,9 @@ class AsyncClient(asyncore.dispatcher, BaseClient):
         
     def writable(self):
         return len(self.buffer) > 0
+
+    def handle_connect(self):
+        pass
 
     def handle_error(self):
         BaseClient.socket_error(self)
