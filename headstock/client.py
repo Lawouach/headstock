@@ -47,6 +47,7 @@ class BaseClient(object):
         self.parser = DispatchParser()
 
         self.running = False
+        self.available = False
 
         self.handlers = []
         self.iq_handlers = []
@@ -360,6 +361,7 @@ class BaseClient(object):
         calls their `ready(client)` method if they
         declare one. The argument is the client's instance.
         """
+        self.available = True
         self.running = True
         for handler in self.handlers:
             if hasattr(handler, 'ready'):
@@ -388,6 +390,7 @@ class BaseClient(object):
         calls their `cleanup()` method if they
         declare one.
         """
+        self.available = False
         self.log("Cleaning up before terminating the XMPP client")
         for handler in self.handlers:
             if hasattr(handler, 'cleanup'):
@@ -414,8 +417,8 @@ class BaseClient(object):
 
 
 class AsyncClient(asyncore.dispatcher, BaseClient):
-    def __init__(self, jid, password, hostname='localhost', port=5222, tls=False, registercls=None):
-        asyncore.dispatcher.__init__(self)
+    def __init__(self, jid, password, hostname='localhost', port=5222, tls=False, registercls=None, map=None):
+        asyncore.dispatcher.__init__(self, map=map)
         #delattr(asyncore.dispatcher, 'log')
         
         BaseClient.__init__(self, jid, password, tls, registercls)
