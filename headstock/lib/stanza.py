@@ -31,6 +31,7 @@ class Stanza(object):
         self.type = type
         self.stanza_id = stanza_id or generate_unique()
         self.lang = lang
+        self.ns = XMPP_CLIENT_NS
 
     def swap_jids(self):
         """
@@ -61,7 +62,7 @@ class Stanza(object):
         if e.stanza_id:
             attributes[u'id'] = e.stanza_id
             
-        stanza = E(e.stanza, attributes=attributes, namespace=XMPP_CLIENT_NS,
+        stanza = E(e.stanza, attributes=attributes, namespace=e.ns,
                    parent=parent)
         
         if e.lang:

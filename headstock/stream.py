@@ -13,19 +13,19 @@ from bridge import Attribute as A
 from bridge.common import XML_NS, XML_PREFIX, XMPP_CLIENT_NS, XMPP_STREAM_NS, XMPP_STREAM_PREFIX,\
      XMPP_SASL_NS, XMPP_SASL_PREFIX, XMPP_AUTH_NS, XMPP_TLS_NS, XMPP_CLIENT_NS, XMPP_IBR_NS, \
      XMPP_BIND_NS, XMPP_SESSION_NS, XMPP_DISCO_ITEMS_NS, XMPP_ROSTER_NS, XMPP_COMPONENT_ACCEPT_NS,\
-     XMPP_STANZA_ERROR_NS
+     XMPP_STANZA_ERROR_NS, XMPP_COMPONENT_ACCEPT_NS, XMPP_DISCO_INFO_NS
 
 from headstock import xmpphandler
 from headstock.error import HeadstockStartTLS, HeadstockAuthenticationSuccess, \
-     HeadstockSessionBound, HeadstockAvailable
+     HeadstockSessionBound, HeadstockAvailable, HeadstockStreamError
 from headstock.lib.stanza import Stanza
-from headstock.lib.utils import generate_unique
+from headstock.lib.utils import generate_unique, compute_handshake
 from headstock.lib.jid import JID
 from headstock.lib.auth.plain import generate_credential, validate_credentials
 from headstock.lib.auth.gaa import perform_authentication
 from headstock.lib.auth.digest import challenge_to_dict, compute_digest_response
 
-__all__ = ['Stream']
+__all__ = ['Stream', 'ComponentStream']
 
 class Stream(object):
     """
@@ -239,3 +239,22 @@ class Stream(object):
         E(u'query', namespace=XMPP_ROSTER_NS, parent=iq)   
 
         return iq
+
+
+class ComponentStream(object):
+    def __init__(self, jid):
+        self.jid = jid
+    
+    def stream_header(self):
+        """
+        Creates and returns a stream header string
+        """
+        return '<stream:stream xmlns:stream="%s" xmlns="jabber:component:accept" to="%s">' % (XMPP_STREAM_NS,
+                                                                                              self.jid.domain)
+
+    @xmpphandler('handshake', XMPP_COMPONENT_ACCEPT_NS)
+    def handle_handshake(self, e):
+        raise HeadstockAvailable()
+
+    def terminate(self):
+        pass

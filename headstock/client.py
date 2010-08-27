@@ -12,6 +12,7 @@ from xml.sax import SAXParseException
 from headstock.lib.jid import JID
 from headstock.register import Register
 from headstock.lib.logger import Logger
+from headstock.lib.utils import compute_handshake
 from headstock.error import HeadstockAuthenticationSuccess, \
      HeadstockSessionBound, HeadstockStartTLS,\
      HeadstockStreamError, HeadstockAvailable
@@ -19,6 +20,7 @@ from headstock.stream import Stream
 
 from bridge import Element as E
 from bridge.parser import DispatchParser
+from bridge.common import XMPP_COMPONENT_ACCEPT_NS
 
 __all__ = ['BaseClient', 'AsyncClient']
 
@@ -88,7 +90,7 @@ class BaseClient(object):
                 if once:
                     self.unregister_from_iq(handler, stanza_type,
                                             stanza_id, once)
-                    self.wrap_handler(e, handler, once, True)
+                self.wrap_handler(e, handler, once, True)
 
         if not handled:
             self.log(e, 'INCOMING (DEFAULT HANDLER)')
@@ -125,6 +127,9 @@ class BaseClient(object):
 
         ``stanza`` :class:`bridge.Element` instance to be sent.
         """
+        if not stanza:
+            return
+        
         if isinstance(stanza, E):
             stanza = stanza.xml(omit_declaration=True, indent=False)
 
@@ -294,7 +299,8 @@ class BaseClient(object):
             self.jid = self.stream.jid
             self.send_stanza(self.stream.notify_presence())
         except HeadstockAvailable:
-            self.send_stanza(self.stream.ask_roster())
+            if hasattr(self.stream, "ask_roster"):
+                self.send_stanza(self.stream.ask_roster())
             self.unregister(self.stream)
             self.ready()
         except HeadstockStreamError:
@@ -345,7 +351,7 @@ class BaseClient(object):
         """
         Stops the client by closing the stream.
         """
-        self.send_raw_stanza(self.stream.terminate())
+        self.send_raw_stanza(self.stream.terminate() or '')
             
     def socket_error(self, msg=None):
         """
@@ -414,6 +420,32 @@ class BaseClient(object):
         if self.logger:
             self.logger.close()
             self.logger = None
+
+from headstock.stream import ComponentStream
+
+class BaseComponent(BaseClient):
+    def __init__(self, service, secret, tls=False):
+        self.parser = DispatchParser()
+
+        self.running = False
+
+        self.handlers = []
+        self.iq_handlers = []
+        
+        self.logger = None
+        self.secret = secret
+        self.jid = JID.parse(service)
+        
+        self.stream = ComponentStream(self.jid)
+        self.register(self.stream)
+        self.parser.register_default(self.default_handler)
+        self.parser.register_default_start_element(self.handle_stream)
+
+    def handle_stream(self, e):
+        self.parser.unregister_default_start_element() 
+        credentials = compute_handshake(e.get_attribute_value('id'), self.secret)
+        self.send_stanza(E(u'handshake', namespace=XMPP_COMPONENT_ACCEPT_NS,
+                           content=credentials))  
 
 
 class AsyncClient(asyncore.dispatcher, BaseClient):
@@ -492,12 +524,26 @@ class AsyncClient(asyncore.dispatcher, BaseClient):
         sent = self.send(self.buffer)
         self.buffer = self.buffer[sent:]
 
+
+class AsyncComponent(AsyncClient, BaseComponent):
+    def __init__(self, secret, service, hostname='localhost',
+                 port=5222, tls=False):
+        asyncore.dispatcher.__init__(self)
+        #delattr(asyncore.dispatcher, 'log')
+        
+        BaseComponent.__init__(self, secret, service)
+        
+        self.buffer = ""
+
+        self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.connect((hostname, port))
+
 try:
     from Axon.Component import component
     from Axon.Ipc import shutdownMicroprocess, producerFinished
     
     from Kamaelia.Chassis.Graphline import Graphline
-    from Kamaelia.Internet.TCPClient import TCPClient
+    from Kamaelia.Internet.TCPClient import TCPClient as KTCPClient
     HAS_KAMAELIA = True
 except ImportError:
     HAS_KAMAELIA = False
@@ -520,7 +566,7 @@ if HAS_KAMAELIA:
             BaseClient.__init__(self, jid, password, tls, registercls)
 
             self.graph = Graphline(client = self,
-                                   tcp = TCPClient(hostname, port),
+                                   tcp = KTCPClient(hostname, port),
                                    linkages = {('client', 'outbox'): ('tcp', 'inbox'),
                                                ("tcp", "outbox") : ("client", "inbox"),
                                                ("tcp", "signal") : ("client", "tcp-control"),
