@@ -690,34 +690,13 @@ except ImportError:
     HAS_TORNADO = False
     
 if HAS_TORNADO:
-    class _IOStream(IOStream):
-        def _handle_read(self):
-            try:
-                chunk = self.socket.recv(self.read_chunk_size)
-            except socket.error, e:
-                if e[0] in (errno.EWOULDBLOCK, errno.EAGAIN):
-                    return
-                else:
-                    logging.warning("Read error on %d: %s",
-                                    self.socket.fileno(), e)
-                    self.close()
-                    return
-            if not chunk:
-                self.close()
-                return
-            self._read_buffer += chunk
-            callback = self._read_callback
-            self._read_callback = None
-            self._read_bytes = None
-            callback(self._consume(len(self._read_buffer)))
-
     class TornadoClient(BaseClient):
         def __init__(self, jid, password, hostname='localhost', port=5222, tls=False, registercls=None):
             BaseClient.__init__(self, jid, password, tls, registercls)
             
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
             s.connect((hostname, port))
-            self.io = _IOStream(s)
+            self.io = IOStream(s)
             self.io.set_close_callback(self.socket_error)
             self._read()
 
@@ -778,7 +757,7 @@ if HAS_TORNADO:
             self._read()
       
         def _read(self):
-            self.io.read_bytes(4096, self.handle_read)
+            self.io.read_until(">", self.handle_read)
 
 try:
     from circuits import Component
