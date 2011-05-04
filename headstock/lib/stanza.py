@@ -90,7 +90,7 @@ class Stanza(object):
                                         type=u'set', stanza_id=stanza_id))
 
     @staticmethod
-    def result_iq(self, from_jid=None, to_jid=None, stanza_id=None):
+    def result_iq(from_jid=None, to_jid=None, stanza_id=None):
         """
         Helper method that generates a :class:`headstock.lib.stanza.Stanza` instance
         of a IQ stanza with a `result` type.
