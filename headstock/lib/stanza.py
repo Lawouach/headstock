@@ -51,8 +51,6 @@ class Stanza(object):
         attached the generated element.
         """
         attributes = {}
-        if e.type:
-            attributes = {u'type': e.type}
         if e.from_jid:
             attributes[u'from'] = unicode(e.from_jid)
         if e.to_jid:
